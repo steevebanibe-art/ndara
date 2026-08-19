@@ -1,0 +1,28 @@
+{
+  "_SOURCE": "⚠️ VALEURS PROVISOIRES — À REMPLACER AVANT TOUTE PUBLICATION par les marges du 4e Recensement général de la population et de l'habitat (BUCREP) ou, à défaut, de l'ECAM/EDS la plus récente. Population de référence : personnes de 18 ans et plus.",
+  "_why": "Le calage sur marges est ce qui rattrape la couverture géographique : une base RDD mobile ne peut pas être stratifiée par région, les préfixes n'étant pas géographiques. Les proportions ci-dessous doivent donc être exactes et sourcées, sinon le calage transporte l'erreur au lieu de la corriger.",
+  "_checked": false,
+  "region": {
+    "CENTRE": 0.19,
+    "EXTREME_NORD": 0.18,
+    "LITTORAL": 0.15,
+    "NORD": 0.12,
+    "OUEST": 0.10,
+    "NORD_OUEST": 0.07,
+    "SUD_OUEST": 0.07,
+    "ADAMAOUA": 0.05,
+    "EST": 0.04,
+    "SUD": 0.03
+  },
+  "sex": {
+    "F": 0.505,
+    "M": 0.495
+  },
+  "age_group": {
+    "18_24": 0.26,
+    "25_34": 0.27,
+    "35_49": 0.26,
+    "50_64": 0.14,
+    "65_PLUS": 0.07
+  }
+}

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NDARA — tableau de bord</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <h1>NDARA</h1>
+      <span class="tag">terrain · estimations · qualité · corpus</span>
+    </div>
+    <nav class="nav">
+      <a href="/">Entretien</a>
+      <a href="/dashboard" class="on">Tableau de bord</a>
+    </nav>
+  </header>
+
+  <div class="caps" id="caps"></div>
+
+  <h2 class="section">Collecte</h2>
+  <div class="grid" id="tiles"></div>
+
+  <h2 class="section">Estimations pondérées</h2>
+  <div class="panel">
+    <table class="data" id="est">
+      <thead><tr>
+        <th>Indicateur</th><th class="num">n</th><th class="num">Estimation</th>
+        <th>Intervalle à 95 %</th><th class="num">Erreur-type</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+    <p class="hint" id="est-empty" style="display:none">
+      Aucun entretien exploitable pour l'instant. Lancez <code>python scripts/simulate.py</code>
+      ou passez un entretien depuis la page d'accueil.
+    </p>
+  </div>
+
+  <h2 class="section">Ce qu'on publie avec les chiffres</h2>
+  <div class="panel"><ul class="disclosure" id="disclosure"></ul></div>
+
+  <h2 class="section">Résultat du terrain</h2>
+  <div class="panel">
+    <table class="data" id="field">
+      <thead><tr><th>Issue de l'appel</th><th class="num">Effectif</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <h2 class="section">Auto-audit</h2>
+  <div class="panel">
+    <div class="grid" id="quality-tiles"></div>
+    <table class="data" id="flags" style="margin-top:16px">
+      <thead><tr><th>Signalement</th><th class="num">Entretiens</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <h2 class="section">Qualité par question</h2>
+  <div class="panel">
+    <table class="data" id="items">
+      <thead><tr>
+        <th>Question</th><th class="num">n</th><th class="num">Non-réponse</th>
+        <th class="num">Relances</th><th class="num">Repli clavier</th><th class="num">Durée moy.</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <h2 class="section">Corpus vocal consenti</h2>
+  <div class="panel">
+    <div class="grid" id="corpus-tiles"></div>
+    <p class="hint">Le corpus n'est jamais vendu : il est destiné à être publié sous licence
+      ouverte, copublié avec l'institution partenaire du pays. Chaque segment provient d'un
+      consentement distinct de celui de l'enquête, refusable sans perte de l'incitation.</p>
+  </div>
+
+  <footer class="foot" id="foot"></footer>
+
+</div>
+<script src="/static/dashboard.js"></script>
+</body>
+</html>

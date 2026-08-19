@@ -1,0 +1,223 @@
+{
+  "id": "prix_denrees_cm",
+  "version": "1.0",
+  "country": "CM",
+  "currency": "FCFA",
+  "languages": ["fr", "en"],
+  "consent_version": "1.0",
+  "_note": "Baromètre des prix des denrées de base. Libellés FIXES : ils ne sont jamais reformulés à la volée. Toute modification d'un libellé impose de changer la version du questionnaire et de re-synthétiser l'audio.",
+  "incentive": {
+    "amount": 200,
+    "currency": "FCFA",
+    "label": {
+      "fr": "200 francs de crédit téléphonique",
+      "en": "200 CFA francs of airtime"
+    }
+  },
+  "prompts": {
+    "announce": {
+      "fr": "Bonjour. Je suis un assistant vocal automatique, une intelligence artificielle. Je ne suis pas une personne. J'appelle pour une enquête sur les prix des denrées de base. L'entretien dure environ trois minutes. Vous pouvez raccrocher à tout moment.",
+      "en": "Hello. I am an automated voice assistant, an artificial intelligence. I am not a person. I am calling for a survey on the price of basic food items. The interview takes about three minutes. You may hang up at any time."
+    },
+    "consent_survey": {
+      "fr": "Acceptez-vous de répondre à quelques questions sur les prix et sur votre ménage ? Vos réponses resteront anonymes. Dites oui ou non, ou tapez 1 pour oui, 2 pour non.",
+      "en": "Do you agree to answer a few questions about prices and your household? Your answers will remain anonymous. Say yes or no, or press 1 for yes, 2 for no."
+    },
+    "consent_corpus": {
+      "fr": "Deuxième question, différente de la première. Acceptez-vous que l'enregistrement de votre voix soit conservé pour aider à améliorer les technologies vocales dans nos langues ? C'est facultatif. Si vous refusez, vous participez quand même à l'enquête et vous recevez le même crédit téléphonique. Dites oui ou non, ou tapez 1 pour oui, 2 pour non.",
+      "en": "A second, separate question. Do you agree that the recording of your voice be kept to help improve voice technology in our languages? This is optional. If you refuse, you still take part in the survey and you still receive the same airtime. Say yes or no, or press 1 for yes, 2 for no."
+    },
+    "consent_corpus_ack": {
+      "fr": "C'est noté. Nous commençons l'enquête.",
+      "en": "Noted. Let us begin the survey."
+    },
+    "relance_unclear": {
+      "fr": "Je n'ai pas bien compris. Pouvez-vous répéter ?",
+      "en": "I did not understand. Could you repeat?"
+    },
+    "relance_dtmf": {
+      "fr": "Je n'ai toujours pas compris. Utilisez les touches de votre téléphone.",
+      "en": "I still did not understand. Please use the keys on your phone."
+    },
+    "thanks": {
+      "fr": "Merci pour votre temps. Votre crédit téléphonique de 200 francs sera envoyé aujourd'hui.",
+      "en": "Thank you for your time. Your 200 francs of airtime will be sent today."
+    },
+    "refusal_ack": {
+      "fr": "C'est entendu. Je vous remercie et je ne vous rappellerai pas. Bonne journée.",
+      "en": "Understood. Thank you, and I will not call you again. Have a good day."
+    },
+    "withdrawal": {
+      "fr": "Votre code de retrait est {code}. Envoyez ce code par SMS au 8080 à tout moment pour faire effacer votre enregistrement.",
+      "en": "Your withdrawal code is {code}. Send this code by SMS to 8080 at any time to have your recording deleted."
+    },
+    "yes_label": {"fr": "Oui", "en": "Yes"},
+    "no_label": {"fr": "Non", "en": "No"}
+  },
+  "steps": [
+    {
+      "id": "region",
+      "type": "single_choice",
+      "raking_var": "region",
+      "expected_seconds": 12,
+      "min_seconds": 2.0,
+      "text": {
+        "fr": "Dans quelle région habitez-vous ? Adamaoua, tapez 1. Centre, 2. Est, 3. Extrême-Nord, 4. Littoral, 5. Nord, 6. Nord-Ouest, 7. Ouest, 8. Sud, 9. Sud-Ouest, 0.",
+        "en": "Which region do you live in? Adamawa, press 1. Centre, 2. East, 3. Far North, 4. Littoral, 5. North, 6. North-West, 7. West, 8. South, 9. South-West, 0."
+      },
+      "options": [
+        {"code": "ADAMAOUA", "dtmf": "1", "labels": {"fr": ["adamaoua"], "en": ["adamawa"]}},
+        {"code": "CENTRE", "dtmf": "2", "labels": {"fr": ["centre", "yaounde"], "en": ["centre", "center"]}},
+        {"code": "EST", "dtmf": "3", "labels": {"fr": ["est", "bertoua"], "en": ["east"]}},
+        {"code": "EXTREME_NORD", "dtmf": "4", "labels": {"fr": ["extreme nord", "extreme-nord", "maroua"], "en": ["far north"]}},
+        {"code": "LITTORAL", "dtmf": "5", "labels": {"fr": ["littoral", "douala"], "en": ["littoral"]}},
+        {"code": "NORD", "dtmf": "6", "labels": {"fr": ["nord", "garoua"], "en": ["north"]}},
+        {"code": "NORD_OUEST", "dtmf": "7", "labels": {"fr": ["nord ouest", "nord-ouest", "bamenda"], "en": ["north west", "north-west"]}},
+        {"code": "OUEST", "dtmf": "8", "labels": {"fr": ["ouest", "bafoussam"], "en": ["west"]}},
+        {"code": "SUD", "dtmf": "9", "labels": {"fr": ["sud", "ebolowa"], "en": ["south"]}},
+        {"code": "SUD_OUEST", "dtmf": "0", "labels": {"fr": ["sud ouest", "sud-ouest", "buea"], "en": ["south west", "south-west"]}}
+      ]
+    },
+    {
+      "id": "sex",
+      "type": "single_choice",
+      "raking_var": "sex",
+      "expected_seconds": 7,
+      "corpus_eligible": true,
+      "text": {
+        "fr": "Êtes-vous une femme ou un homme ? Femme, tapez 1. Homme, tapez 2.",
+        "en": "Are you a woman or a man? Woman, press 1. Man, press 2."
+      },
+      "options": [
+        {"code": "F", "dtmf": "1", "labels": {"fr": ["femme", "une femme", "feminin"], "en": ["woman", "female"]}},
+        {"code": "M", "dtmf": "2", "labels": {"fr": ["homme", "un homme", "masculin"], "en": ["man", "male"]}}
+      ]
+    },
+    {
+      "id": "age_group",
+      "type": "single_choice",
+      "raking_var": "age_group",
+      "expected_seconds": 10,
+      "text": {
+        "fr": "Quel est votre âge ? De 18 à 24 ans, tapez 1. De 25 à 34 ans, 2. De 35 à 49 ans, 3. De 50 à 64 ans, 4. 65 ans ou plus, 5.",
+        "en": "How old are you? 18 to 24, press 1. 25 to 34, 2. 35 to 49, 3. 50 to 64, 4. 65 or older, 5."
+      },
+      "options": [
+        {"code": "18_24", "dtmf": "1", "labels": {"fr": ["18 24", "dix huit"], "en": ["18 24"]}},
+        {"code": "25_34", "dtmf": "2", "labels": {"fr": ["25 34"], "en": ["25 34"]}},
+        {"code": "35_49", "dtmf": "3", "labels": {"fr": ["35 49"], "en": ["35 49"]}},
+        {"code": "50_64", "dtmf": "4", "labels": {"fr": ["50 64"], "en": ["50 64"]}},
+        {"code": "65_PLUS", "dtmf": "5", "labels": {"fr": ["65", "soixante cinq", "plus de 65"], "en": ["65", "older"]}}
+      ]
+    },
+    {
+      "id": "hh_size",
+      "type": "numeric",
+      "unit": "personnes",
+      "min": 1,
+      "max": 30,
+      "plausible": [1, 15],
+      "expected_seconds": 8,
+      "text": {
+        "fr": "Combien de personnes vivent habituellement dans votre ménage ? Dites le nombre.",
+        "en": "How many people usually live in your household? Say the number."
+      }
+    },
+    {
+      "id": "bought_rice",
+      "type": "yes_no",
+      "expected_seconds": 7,
+      "text": {
+        "fr": "Hier ou aujourd'hui, avez-vous acheté du riz ? Dites oui ou non, ou tapez 1 pour oui, 2 pour non.",
+        "en": "Yesterday or today, did you buy rice? Say yes or no, or press 1 for yes, 2 for no."
+      }
+    },
+    {
+      "id": "rice_price",
+      "type": "numeric",
+      "unit": "FCFA/kg",
+      "min": 100,
+      "max": 10000,
+      "plausible": [300, 2000],
+      "expected_seconds": 10,
+      "ask_if": {"step": "bought_rice", "equals": "yes"},
+      "indicator": "rice_price",
+      "text": {
+        "fr": "Quel prix avez-vous payé pour un kilogramme de riz, en francs CFA ? Dites le montant.",
+        "en": "How much did you pay for one kilogram of rice, in CFA francs? Say the amount."
+      }
+    },
+    {
+      "id": "oil_price",
+      "type": "numeric",
+      "unit": "FCFA/litre",
+      "min": 200,
+      "max": 20000,
+      "plausible": [700, 3000],
+      "expected_seconds": 10,
+      "indicator": "oil_price",
+      "text": {
+        "fr": "Et pour un litre d'huile de cuisine, quel est le prix aujourd'hui dans votre marché, en francs CFA ?",
+        "en": "And for one litre of cooking oil, what is the price today in your market, in CFA francs?"
+      }
+    },
+    {
+      "id": "price_direction",
+      "type": "single_choice",
+      "expected_seconds": 10,
+      "text": {
+        "fr": "Par rapport au mois dernier, les prix de la nourriture ont-ils augmenté, sont-ils restés pareils, ou ont-ils baissé ? Augmenté, tapez 1. Pareils, 2. Baissé, 3.",
+        "en": "Compared with last month, have food prices gone up, stayed the same, or gone down? Gone up, press 1. The same, 2. Gone down, 3."
+      },
+      "options": [
+        {"code": "hausse", "dtmf": "1", "labels": {"fr": ["augmente", "augmentation", "monte", "cher", "hausse"], "en": ["up", "increased", "higher"]}},
+        {"code": "stable", "dtmf": "2", "labels": {"fr": ["pareil", "pareils", "meme", "stable", "rien change"], "en": ["same", "stable", "unchanged"]}},
+        {"code": "baisse", "dtmf": "3", "labels": {"fr": ["baisse", "diminue", "moins cher", "descendu"], "en": ["down", "decreased", "lower"]}}
+      ]
+    },
+    {
+      "id": "reduced_meals",
+      "type": "yes_no",
+      "expected_seconds": 9,
+      "corpus_eligible": false,
+      "_note": "Question sensible : exclue du corpus vocal même en cas de consentement.",
+      "text": {
+        "fr": "Au cours des sept derniers jours, votre ménage a-t-il dû réduire le nombre de repas par manque d'argent ou de nourriture ? Oui, tapez 1. Non, tapez 2.",
+        "en": "In the last seven days, did your household have to reduce the number of meals because of a lack of money or food? Yes, press 1. No, press 2."
+      }
+    },
+    {
+      "id": "skipped_day",
+      "type": "yes_no",
+      "expected_seconds": 9,
+      "corpus_eligible": false,
+      "_note": "Ordre de sévérité type FIES : passer une journée entière sans manger implique logiquement d'avoir réduit les repas.",
+      "text": {
+        "fr": "Toujours au cours des sept derniers jours, y a-t-il eu une journée entière où vous n'avez rien mangé par manque de moyens ? Oui, tapez 1. Non, tapez 2.",
+        "en": "Still in the last seven days, was there a whole day when you did not eat anything because of a lack of means? Yes, press 1. No, press 2."
+      }
+    }
+  ],
+  "checks": [
+    {
+      "id": "chk_filtre_riz",
+      "type": "implies",
+      "_note": "Contrôle d'intégrité de l'instrument : si aucun riz n'a été acheté, le prix doit avoir été sauté par le filtre.",
+      "if": {"step": "bought_rice", "equals": "no"},
+      "then": {"step": "rice_price", "equals": "__skipped__"}
+    },
+    {
+      "id": "chk_severite_alimentaire",
+      "type": "implies",
+      "_note": "Ordre de sévérité (échelle FIES) : une journée entière sans manger implique une réduction des repas.",
+      "if": {"step": "skipped_day", "equals": "yes"},
+      "then": {"step": "reduced_meals", "equals": "yes"}
+    },
+    {
+      "id": "chk_taille_menage",
+      "type": "implies",
+      "if": {"step": "bought_rice", "equals": "yes"},
+      "then": {"step": "hh_size", "max": 30}
+    }
+  ]
+}

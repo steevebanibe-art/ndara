@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.env
+data/ndara.db*
+data/corpus/audio/
+data/corpus/export/
+data/audio/

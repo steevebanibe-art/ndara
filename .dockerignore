@@ -1,0 +1,10 @@
+.git
+.env
+__pycache__/
+*.pyc
+data/ndara.db
+data/ndara.db-shm
+data/ndara.db-wal
+data/corpus/
+data/audio/
+review/

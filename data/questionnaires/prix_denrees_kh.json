@@ -1,0 +1,206 @@
+{
+  "id": "prix_denrees_kh",
+  "version": "0.9-draft",
+  "country": "KH",
+  "currency": "KHR",
+  "languages": ["km", "en"],
+  "consent_version": "1.0",
+  "_WARNING_NATIVE_REVIEW": "TRADUCTION KHMÈRE NON VALIDÉE PAR UN LOCUTEUR NATIF. Ne pas utiliser devant le jury, ni en collecte, avant relecture — contact prévu : panharith.in@cadt.edu.kh (CADT). Le pipeline technique est complet ; seul le contenu linguistique est en attente. Version bloquée en 0.9-draft tant que la relecture n'est pas faite.",
+  "_note": "Les libellés sont FIXES et pré-synthétisés. Voix Azure disponible : km-KH-SreymomNeural (féminine) / km-KH-PisethNeural (masculine). Reconnaissance khmère : taux d'erreur mot élevé (20 à 50 %) — d'où des modalités courtes et un repli clavier systématique.",
+  "incentive": {
+    "amount": 2000,
+    "currency": "KHR",
+    "label": {"km": "ទឹកប្រាក់ទូរស័ព្ទ ២០០០ រៀល", "en": "2,000 riel of airtime"}
+  },
+  "prompts": {
+    "announce": {
+      "km": "សួស្តី។ ខ្ញុំជាជំនួយការសំឡេងស្វ័យប្រវត្តិ ជាបញ្ញាសិប្បនិម្មិត។ ខ្ញុំមិនមែនជាមនុស្សទេ។ ខ្ញុំទូរស័ព្ទមកសម្រាប់ការស្ទង់មតិអំពីតម្លៃម្ហូបអាហារ។ ការសម្ភាសន៍ចំណាយពេលប្រហែលបីនាទី។ លោកអ្នកអាចដាក់ទូរស័ព្ទចុះនៅពេលណាក៏បាន។",
+      "en": "Hello. I am an automated voice assistant, an artificial intelligence. I am not a person. I am calling for a survey on food prices. The interview takes about three minutes. You may hang up at any time."
+    },
+    "consent_survey": {
+      "km": "តើលោកអ្នកយល់ព្រមឆ្លើយសំណួរខ្លីៗអំពីតម្លៃទំនិញ និងគ្រួសាររបស់លោកអ្នកទេ? ចម្លើយនឹងរក្សាជាសម្ងាត់។ សូមចុចលេខ ១ សម្រាប់យល់ព្រម ឬលេខ ២ សម្រាប់មិនយល់ព្រម។",
+      "en": "Do you agree to answer a few short questions about prices and your household? Answers stay anonymous. Press 1 to agree, 2 to decline."
+    },
+    "consent_corpus": {
+      "km": "សំណួរទីពីរ ដែលដាច់ដោយឡែកពីសំណួរទីមួយ។ តើលោកអ្នកយល់ព្រមឱ្យរក្សាទុកការថតសំឡេងរបស់លោកអ្នក ដើម្បីជួយកែលម្អបច្ចេកវិទ្យាសំឡេងជាភាសាខ្មែរទេ? នេះជាការស្ម័គ្រចិត្ត។ បើមិនយល់ព្រម លោកអ្នកនៅតែចូលរួម និងទទួលបានទឹកប្រាក់ដូចគ្នា។ ចុចលេខ ១ ឬលេខ ២។",
+      "en": "A second, separate question. Do you agree that your voice recording be kept to help improve Khmer voice technology? This is voluntary. If you decline, you still take part and still receive the same airtime. Press 1 or 2."
+    },
+    "consent_corpus_ack": {
+      "km": "បានកត់ត្រាហើយ។ ឥឡូវយើងចាប់ផ្តើមសំណួរ។",
+      "en": "Noted. We will now begin."
+    },
+    "relance_unclear": {
+      "km": "ខ្ញុំមិនបានឮច្បាស់ទេ។ សូមនិយាយម្តងទៀត។",
+      "en": "I did not hear clearly. Please say it again."
+    },
+    "relance_dtmf": {
+      "km": "ខ្ញុំនៅតែមិនយល់។ សូមប្រើគ្រាប់ចុចលេខនៅលើទូរស័ព្ទ។",
+      "en": "I still did not understand. Please use the number keys."
+    },
+    "thanks": {
+      "km": "អរគុណសម្រាប់ពេលវេលារបស់លោកអ្នក។ ទឹកប្រាក់ទូរស័ព្ទ ២០០០ រៀល នឹងផ្ញើជូននៅថ្ងៃនេះ។",
+      "en": "Thank you for your time. Your 2,000 riel of airtime will be sent today."
+    },
+    "refusal_ack": {
+      "km": "យល់ព្រមហើយ។ អរគុណ ហើយខ្ញុំនឹងមិនទូរស័ព្ទមកទៀតទេ។",
+      "en": "Understood. Thank you, and I will not call again."
+    },
+    "withdrawal": {
+      "km": "លេខកូដដកសំឡេងរបស់លោកអ្នកគឺ {code}។ ផ្ញើលេខកូដនេះមកវិញនៅពេលណាក៏បាន ដើម្បីលុបការថតសំឡេង។",
+      "en": "Your withdrawal code is {code}. Send this code back at any time to have the recording deleted."
+    },
+    "yes_label": {"km": "បាទ/ចាស", "en": "Yes"},
+    "no_label": {"km": "ទេ", "en": "No"}
+  },
+  "steps": [
+    {
+      "id": "region",
+      "type": "single_choice",
+      "raking_var": "region",
+      "expected_seconds": 14,
+      "text": {
+        "km": "តើលោកអ្នករស់នៅខេត្ត ឬរាជធានីណា? ភ្នំពេញ ចុច ១។ បន្ទាយមានជ័យ ២។ បាត់ដំបង ៣។ សៀមរាប ៤។ កំពង់ចាម ៥។ កណ្ដាល ៦។ ព្រៃវែង ៧។ តាកែវ ៨។ ផ្សេងទៀត ៩។",
+        "en": "Which province do you live in? Phnom Penh press 1. Banteay Meanchey 2. Battambang 3. Siem Reap 4. Kampong Cham 5. Kandal 6. Prey Veng 7. Takeo 8. Other 9."
+      },
+      "options": [
+        {"code": "PHNOM_PENH", "dtmf": "1", "labels": {"km": ["ភ្នំពេញ"], "en": ["phnom penh"]}},
+        {"code": "BANTEAY_MEANCHEY", "dtmf": "2", "labels": {"km": ["បន្ទាយមានជ័យ"], "en": ["banteay meanchey"]}},
+        {"code": "BATTAMBANG", "dtmf": "3", "labels": {"km": ["បាត់ដំបង"], "en": ["battambang"]}},
+        {"code": "SIEM_REAP", "dtmf": "4", "labels": {"km": ["សៀមរាប"], "en": ["siem reap"]}},
+        {"code": "KAMPONG_CHAM", "dtmf": "5", "labels": {"km": ["កំពង់ចាម"], "en": ["kampong cham"]}},
+        {"code": "KANDAL", "dtmf": "6", "labels": {"km": ["កណ្ដាល"], "en": ["kandal"]}},
+        {"code": "PREY_VENG", "dtmf": "7", "labels": {"km": ["ព្រៃវែង"], "en": ["prey veng"]}},
+        {"code": "TAKEO", "dtmf": "8", "labels": {"km": ["តាកែវ"], "en": ["takeo"]}},
+        {"code": "AUTRE", "dtmf": "9", "labels": {"km": ["ផ្សេងទៀត"], "en": ["other"]}}
+      ]
+    },
+    {
+      "id": "sex",
+      "type": "single_choice",
+      "raking_var": "sex",
+      "expected_seconds": 7,
+      "text": {
+        "km": "តើលោកអ្នកជាស្ត្រី ឬបុរស? ស្ត្រី ចុច ១។ បុរស ចុច ២។",
+        "en": "Are you a woman or a man? Woman press 1. Man press 2."
+      },
+      "options": [
+        {"code": "F", "dtmf": "1", "labels": {"km": ["ស្ត្រី", "នារី"], "en": ["woman", "female"]}},
+        {"code": "M", "dtmf": "2", "labels": {"km": ["បុរស"], "en": ["man", "male"]}}
+      ]
+    },
+    {
+      "id": "age_group",
+      "type": "single_choice",
+      "raking_var": "age_group",
+      "expected_seconds": 10,
+      "text": {
+        "km": "តើលោកអ្នកអាយុប៉ុន្មាន? ១៨ ដល់ ២៤ ចុច ១។ ២៥ ដល់ ៣៤ ចុច ២។ ៣៥ ដល់ ៤៩ ចុច ៣។ ៥០ ដល់ ៦៤ ចុច ៤។ ៦៥ ឡើងទៅ ចុច ៥។",
+        "en": "How old are you? 18 to 24 press 1. 25 to 34 press 2. 35 to 49 press 3. 50 to 64 press 4. 65 or older press 5."
+      },
+      "options": [
+        {"code": "18_24", "dtmf": "1", "labels": {"km": ["១៨"], "en": ["18 24"]}},
+        {"code": "25_34", "dtmf": "2", "labels": {"km": ["២៥"], "en": ["25 34"]}},
+        {"code": "35_49", "dtmf": "3", "labels": {"km": ["៣៥"], "en": ["35 49"]}},
+        {"code": "50_64", "dtmf": "4", "labels": {"km": ["៥០"], "en": ["50 64"]}},
+        {"code": "65_PLUS", "dtmf": "5", "labels": {"km": ["៦៥"], "en": ["65"]}}
+      ]
+    },
+    {
+      "id": "hh_size",
+      "type": "numeric",
+      "unit": "នាក់",
+      "min": 1,
+      "max": 30,
+      "plausible": [1, 12],
+      "expected_seconds": 8,
+      "text": {
+        "km": "តើមានមនុស្សប៉ុន្មាននាក់រស់នៅក្នុងគ្រួសាររបស់លោកអ្នក? សូមប្រាប់ចំនួន។",
+        "en": "How many people usually live in your household? Say the number."
+      }
+    },
+    {
+      "id": "bought_rice",
+      "type": "yes_no",
+      "expected_seconds": 7,
+      "text": {
+        "km": "ម្សិលមិញ ឬថ្ងៃនេះ តើលោកអ្នកបានទិញអង្ករទេ? ចុច ១ សម្រាប់បាទ/ចាស ចុច ២ សម្រាប់ទេ។",
+        "en": "Yesterday or today, did you buy rice? Press 1 for yes, 2 for no."
+      }
+    },
+    {
+      "id": "rice_price",
+      "type": "numeric",
+      "unit": "KHR/kg",
+      "min": 500,
+      "max": 30000,
+      "plausible": [2000, 6000],
+      "expected_seconds": 11,
+      "ask_if": {"step": "bought_rice", "equals": "yes"},
+      "text": {
+        "km": "តើលោកអ្នកបានបង់ថ្លៃប៉ុន្មានរៀល សម្រាប់អង្ករមួយគីឡូក្រាម? សូមប្រាប់ចំនួន។",
+        "en": "How much did you pay in riel for one kilogram of rice? Say the amount."
+      }
+    },
+    {
+      "id": "oil_price",
+      "type": "numeric",
+      "unit": "KHR/litre",
+      "min": 1000,
+      "max": 60000,
+      "plausible": [6000, 15000],
+      "expected_seconds": 11,
+      "text": {
+        "km": "ចុះប្រេងចម្អិនអាហារមួយលីត្រ តើតម្លៃប៉ុន្មានរៀលនៅផ្សារថ្ងៃនេះ?",
+        "en": "And for one litre of cooking oil, what is today's price in riel?"
+      }
+    },
+    {
+      "id": "price_direction",
+      "type": "single_choice",
+      "expected_seconds": 11,
+      "text": {
+        "km": "បើប្រៀបធៀបនឹងខែមុន តើតម្លៃម្ហូបអាហារឡើងថ្លៃ ដដែល ឬចុះថ្លៃ? ឡើងថ្លៃ ចុច ១។ ដដែល ចុច ២។ ចុះថ្លៃ ចុច ៣។",
+        "en": "Compared with last month, have food prices gone up, stayed the same, or gone down? Up press 1. Same press 2. Down press 3."
+      },
+      "options": [
+        {"code": "hausse", "dtmf": "1", "labels": {"km": ["ឡើងថ្លៃ", "ឡើង"], "en": ["up"]}},
+        {"code": "stable", "dtmf": "2", "labels": {"km": ["ដដែល"], "en": ["same"]}},
+        {"code": "baisse", "dtmf": "3", "labels": {"km": ["ចុះថ្លៃ", "ចុះ"], "en": ["down"]}}
+      ]
+    },
+    {
+      "id": "reduced_meals",
+      "type": "yes_no",
+      "expected_seconds": 10,
+      "corpus_eligible": false,
+      "text": {
+        "km": "ក្នុងរយៈពេលប្រាំពីរថ្ងៃចុងក្រោយ តើគ្រួសាររបស់លោកអ្នកបានកាត់បន្ថយចំនួនពេលបាយ ដោយសារខ្វះលុយ ឬខ្វះម្ហូបទេ? ចុច ១ ឬ ២។",
+        "en": "In the last seven days, did your household reduce the number of meals due to lack of money or food? Press 1 or 2."
+      }
+    },
+    {
+      "id": "skipped_day",
+      "type": "yes_no",
+      "expected_seconds": 10,
+      "corpus_eligible": false,
+      "text": {
+        "km": "ក្នុងរយៈពេលប្រាំពីរថ្ងៃចុងក្រោយដដែល តើមានថ្ងៃណាមួយដែលលោកអ្នកមិនបានបរិភោគអ្វីទាល់តែសោះ ដោយសារខ្វះលទ្ធភាពទេ? ចុច ១ ឬ ២។",
+        "en": "Still in the last seven days, was there a whole day when you did not eat anything because of lack of means? Press 1 or 2."
+      }
+    }
+  ],
+  "checks": [
+    {
+      "id": "chk_filtre_riz",
+      "type": "implies",
+      "if": {"step": "bought_rice", "equals": "no"},
+      "then": {"step": "rice_price", "equals": "__skipped__"}
+    },
+    {
+      "id": "chk_severite_alimentaire",
+      "type": "implies",
+      "if": {"step": "skipped_day", "equals": "yes"},
+      "then": {"step": "reduced_meals", "equals": "yes"}
+    }
+  ]
+}
