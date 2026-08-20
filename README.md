@@ -1,3 +1,15 @@
+---
+title: NDARA
+emoji: "📞"
+colorFrom: gray
+colorTo: red
+sdk: docker
+app_port: 7860
+pinned: false
+license: other
+short_description: Enquetes statistiques par simple appel telephonique
+---
+
 # NDARA
 
 ### *l'enquêteur qui va là où personne ne peut aller*

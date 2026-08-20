@@ -1,4 +1,4 @@
-# NDARA — image de démonstration.
+# NDARA, image de démonstration.
 #
 # Aucune dépendance à installer : le serveur et toute la chaîne statistique
 # tiennent dans la bibliothèque standard. L'image ne fait que copier le code,
@@ -6,11 +6,19 @@
 #
 #   docker build -t ndara .
 #   docker run -p 8000:7860 ndara      →  http://127.0.0.1:8000/
+#
+# Compatible Hugging Face Spaces, qui exécute le conteneur sous l'utilisateur
+# 1000 et impose son propre port par la variable PORT.
 
 FROM python:3.12-slim
 
+# Hugging Face lance le conteneur en tant qu'utilisateur 1000. Sans cet
+# utilisateur et sans la propriété du dossier, la base de données ne peut
+# pas s'écrire et le service démarre puis échoue à la première requête.
+RUN useradd -m -u 1000 ndara
 WORKDIR /app
-COPY . .
+COPY --chown=ndara:ndara . .
+USER ndara
 
 # La vague de démonstration est semée AU MOMENT DE LA CONSTRUCTION, avec une
 # graine figée : deux constructions successives donnent exactement les mêmes
