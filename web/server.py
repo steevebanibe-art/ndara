@@ -141,6 +141,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._serve_file(STATIC / "dashboard.html")
         if route.startswith("/static/"):
             return self._serve_file(STATIC / route[len("/static/"):])
+        if route.startswith("/docs/"):
+            # La table de validation de l'auto-audit est citée depuis le
+            # tableau de bord : elle doit être lisible sans cloner le dépôt.
+            name = route[len("/docs/"):]
+            if "/" in name or ".." in name:
+                return self._send(404, b"not found", "text/plain")
+            path = ROOT / "docs" / name
+            if not path.is_file():
+                return self._send(404, b"not found", "text/plain")
+            return self._send(200, path.read_bytes(), "text/plain; charset=utf-8")
         if route.startswith("/audio/"):
             return self._serve_file(AUDIO_ROOT / route[len("/audio/"):])
 
@@ -167,6 +177,7 @@ class Handler(BaseHTTPRequestHandler):
             data = estimate_all(APP.store, q, margins)
             data["corpus"] = APP.corpus.stats()
             data["capabilities"] = APP.capabilities()
+            data["provenance"] = APP.store.provenance()
             return self._json(data)
 
         if route == "/api/quality":

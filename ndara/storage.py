@@ -140,6 +140,19 @@ class Store:
             rows = self.conn.execute("SELECT * FROM interviews").fetchall()
         return [_row_to_interview(r) for r in rows]
 
+    def provenance(self) -> dict[str, int]:
+        """D'où viennent les entretiens, par canal.
+
+        La colonne existe depuis le premier jour mais rien ne l'affichait.
+        Un évaluateur qui découvre seul que les chiffres sont simulés se sent
+        trompé ; un évaluateur à qui on le dit voit un instrument. Cette
+        méthode existe pour que l'interface n'ait aucune excuse de se taire.
+        """
+        rows = self.conn.execute(
+            "SELECT channel, COUNT(*) AS n FROM interviews GROUP BY channel"
+        ).fetchall()
+        return {r["channel"]: r["n"] for r in rows}
+
     # ---------- tours ----------
 
     def save_turn(self, t: Turn) -> None:

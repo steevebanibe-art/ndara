@@ -42,12 +42,38 @@ async function load() {
   const d = await (await fetch("/api/dashboard")).json();
   const q = await (await fetch("/api/quality")).json();
 
+  // provenance : d'où viennent réellement ces chiffres.
+  // Affiché avant tout le reste, parce qu'un chiffre sans sa provenance
+  // n'est pas un résultat, c'est une affirmation.
+  const p = d.provenance || {};
+  const LIBELLE = {
+    simulation: "simulés, banc d'essai",
+    web: "menés dans un navigateur",
+    phone: "appels téléphoniques réels",
+  };
+  const ordre = ["phone", "web", "simulation"];
+  const total = Object.values(p).reduce((a, b) => a + b, 0);
+  const parts = ordre
+    .filter((k) => p[k])
+    .map((k) => `<b>${num(p[k])}</b> ${LIBELLE[k] || k}`);
+  const reel = p.phone || 0;
+  el("provenance").innerHTML = total
+    ? `<p class="prov ${reel ? "prov-reel" : "prov-simule"}">
+         ${parts.join(" · ")}
+         ${reel ? "" : "<span>Aucun appel téléphonique réel n'a encore été mené. Tout ce qui suit est calculé sur des entretiens fabriqués à taux connu.</span>"}
+       </p>`
+    : `<p class="prov prov-simule">Aucun entretien en base.</p>`;
+
   // capacités
   const caps = d.capabilities || {};
+  const brouillons = (caps.questionnaires || []).filter((q) => q.draft);
   el("caps").innerHTML = [
     `<span class="cap ${caps.asr_live ? "live" : "off"}">transcription : ${caps.asr}</span>`,
     `<span class="cap ${caps.coder === "llm" ? "live" : "off"}">codage : ${caps.coder}</span>`,
     `<span class="cap ${caps.telephony ? "live" : "off"}">téléphonie : ${caps.telephony ? "branchée" : "non branchée"}</span>`,
+    ...brouillons.map(
+      (q) => `<span class="cap draft">${q.id} : brouillon ${q.version}, non validé par un locuteur natif</span>`
+    ),
   ].join("");
 
   const fw = d.fieldwork || { counts: {} };

@@ -62,6 +62,16 @@ header.top {
 .cap.off { border-color: var(--line); color: var(--ink-faint); }
 .cap.draft { border-color: var(--warn); color: var(--warn); }
 
+/* La provenance des chiffres, posée avant les chiffres eux-mêmes. */
+.prov {
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.75;
+  margin: 0 0 14px; padding: 12px 16px;
+  border-left: 3px solid var(--warn); background: rgba(0, 0, 0, .03);
+}
+.prov b { font-weight: 600; }
+.prov span { display: block; margin-top: 6px; color: var(--ink-dim); }
+.prov-reel { border-left-color: var(--ok); }
+
 /* ---------- panneaux ---------- */
 
 .panel {
