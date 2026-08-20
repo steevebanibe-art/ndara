@@ -107,11 +107,22 @@ class InterviewEngine:
     # Étapes de consentement
     # ------------------------------------------------------------------
 
+    def _audio(self, key: str, language: str) -> str:
+        """Adresse du libellé pré-synthétisé.
+
+        L'annonce et les deux consentements sont les phrases qui engagent le
+        répondant : elles doivent être entendues dans la même voix que le
+        reste, pas lues par la synthèse du navigateur. Si le fichier n'existe
+        pas, le client retombe tout seul sur la voix du navigateur.
+        """
+        return f"/audio/{self.q.id}/{language}/{key}.mp3"
+
     def _announce_prompt(self, iv: Interview) -> Prompt:
         return Prompt(
             kind="announce",
             step_id="__announce__",
             text=self.q.prompt("announce", iv.language),
+            audio_url=self._audio("announce", iv.language),
             input_type="none",
             allow_voice=False,
             interview_id=iv.id,
@@ -124,6 +135,7 @@ class InterviewEngine:
             kind="consent",
             step_id=f"__consent_{which}__",
             text=self.q.prompt(key, iv.language),
+            audio_url=self._audio(key, iv.language),
             input_type="consent",
             allow_voice=True,
             allow_dtmf=True,
@@ -173,6 +185,7 @@ class InterviewEngine:
                 self.store.log("consent_survey_refused", iv.id)
                 return Prompt(kind="end", step_id="__end__",
                               text=self.q.prompt("refusal_ack", iv.language),
+                              audio_url=self._audio("refusal_ack", iv.language),
                               input_type="none", allow_voice=False, done=True,
                               interview_id=iv.id, progress=1.0)
             iv.consent_survey = Consent.GRANTED.value
@@ -375,11 +388,17 @@ class InterviewEngine:
 
     def _end_prompt(self, iv: Interview) -> Prompt:
         thanks = self.q.prompt("thanks", iv.language)
+        audio = self._audio("thanks", iv.language)
         if iv.consent_corpus == Consent.GRANTED.value and iv.withdrawal_code:
             thanks += " " + self.q.prompt("withdrawal", iv.language).replace(
                 "{code}", iv.withdrawal_code)
-        return Prompt(kind="end", step_id="__end__", text=thanks, input_type="none",
-                      allow_voice=False, done=True, interview_id=iv.id, progress=1.0)
+            # Le code de retrait change à chaque entretien : il ne peut pas être
+            # pré-synthétisé. Plutôt que de faire entendre un remerciement
+            # amputé de son code, on rend toute la phrase au client, qui la lit.
+            audio = None
+        return Prompt(kind="end", step_id="__end__", text=thanks, audio_url=audio,
+                      input_type="none", allow_voice=False, done=True,
+                      interview_id=iv.id, progress=1.0)
 
     # ------------------------------------------------------------------
     # Droit de retrait

@@ -102,6 +102,14 @@ class Questionnaire:
 
     # ---------- accès ----------
 
+    def prompt_keys(self) -> list[str]:
+        """Les libellés système, dans l'ordre du fichier.
+
+        Utilisé par la pré-synthèse, qui doit couvrir tout ce que NDARA dira,
+        pas une liste tenue à la main qui prend du retard sur le questionnaire.
+        """
+        return list(self.prompts)
+
     def prompt(self, key: str, lang: str) -> str:
         block = self.prompts.get(key, {})
         return block.get(lang) or block.get("fr") or next(iter(block.values()), f"[{key}]")

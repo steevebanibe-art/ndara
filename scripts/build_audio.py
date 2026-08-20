@@ -25,13 +25,25 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from ndara.console import setup as setup_console  # noqa: E402
-from ndara.providers.tts import AzureTTS, NullTTS  # noqa: E402
+from ndara.providers.tts import ElevenLabsTTS, NullTTS, tts_for_language  # noqa: E402
 from ndara.questionnaire import Questionnaire  # noqa: E402
 
-SYSTEM_KEYS = [
-    "announce", "consent_survey", "consent_corpus", "consent_corpus_ack",
-    "relance_unclear", "relance_dtmf", "thanks", "refusal_ack",
-]
+
+def _keys_to_speak(q: Questionnaire, lang: str) -> list[tuple[str, str]]:
+    """Tout ce que NDARA dira jamais, sauf ce qui change à chaque entretien.
+
+    Les libellés portant un gabarit (le code de retrait, par exemple) ne sont
+    pas pré-synthétisables : ils changent d'un répondant à l'autre, donc ils
+    sont rendus au client, qui les lit.
+    """
+    items: list[tuple[str, str]] = []
+    for key in q.prompt_keys():
+        text = q.prompt(key, lang)
+        if not text or "{" in text:
+            continue
+        items.append((key, text))
+    items += [(s.id, s.prompt(lang)) for s in q.steps]
+    return items
 
 
 def main() -> None:
@@ -40,22 +52,33 @@ def main() -> None:
     ap.add_argument("--questionnaire", default="prix_denrees_cm")
     ap.add_argument("--out", default="data/audio")
     ap.add_argument("--force", action="store_true", help="régénérer les fichiers existants")
+    ap.add_argument("--voices", action="store_true",
+                    help="lister les voix du compte ElevenLabs et s'arrêter")
     args = ap.parse_args()
 
+    if args.voices:
+        eleven = ElevenLabsTTS()
+        if not eleven.key:
+            print("ELEVENLABS_API_KEY absente.")
+            return
+        for v in eleven.voices():
+            labels = v.get("labels") or {}
+            desc = " · ".join(f"{k}={val}" for k, val in labels.items() if val)
+            print(f"  {v.get('voice_id','')}  {v.get('name',''):<24} {desc}")
+        print("\nChoisir un identifiant, puis : set ELEVENLABS_VOICE_ID=<identifiant>")
+        return
+
     q = Questionnaire.load(ROOT / "data" / "questionnaires" / f"{args.questionnaire}.json")
-    tts = AzureTTS()
-    live = getattr(tts, "available", False)
-    if not live:
-        tts = NullTTS()
-        print("AZURE_SPEECH_KEY absente — mode inventaire (aucun fichier écrit).\n")
 
     total = written = skipped = 0
+    used: dict[str, str] = {}
     for lang in q.languages:
+        tts = tts_for_language(lang)
+        live = not isinstance(tts, NullTTS)
+        used[lang] = tts.name if live else "aucun (voix du navigateur)"
         outdir = Path(ROOT / args.out) / q.id / lang
         outdir.mkdir(parents=True, exist_ok=True)
-        items: list[tuple[str, str]] = [(k, q.prompt(k, lang)) for k in SYSTEM_KEYS]
-        items += [(s.id, s.prompt(lang)) for s in q.steps]
-        for key, text in items:
+        for key, text in _keys_to_speak(q, lang):
             total += 1
             path = outdir / f"{key}.mp3"
             if path.exists() and not args.force:
@@ -71,9 +94,9 @@ def main() -> None:
                 print(f"  [{lang}] {key:<22} {len(data) / 1024:.0f} Ko")
 
     print(f"\n{total} libellés · {written} écrits · {skipped} déjà présents")
-    if live:
-        print(f"Voix utilisées : {', '.join(sorted(set(q.languages)))} "
-              f"(khmer : km-KH-SreymomNeural)")
+    for lang, name in used.items():
+        print(f"  {lang} : {name}")
+    if written:
         print("⚠️  Toute modification d'un libellé impose de changer la version du "
               "questionnaire ET de relancer ce script avec --force.")
 

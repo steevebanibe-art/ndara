@@ -82,6 +82,90 @@ class AzureTTS:
             return resp.read()
 
 
+class ElevenLabsTTS:
+    """Voix naturelle, pour les langues où elle est réellement meilleure.
+
+    Choisi pour le français d'Afrique. Le but n'est pas de faire passer la
+    machine pour quelqu'un : l'annonce d'ouverture dit qu'elle est une
+    intelligence artificielle, et cela ne change pas. Le but est d'être
+    compris et supporté pendant deux minutes et demie par une personne qui
+    n'a peut-être jamais parlé à une machine, sur une ligne bruitée.
+
+    La voix se choisit par ``ELEVENLABS_VOICE_ID``. Une voix clonée à partir
+    d'un locuteur du pays, avec son accord écrit, vaut mieux que n'importe
+    quelle voix de catalogue : un accent lointain coûte de la compréhension
+    exactement là où l'enquête va chercher les gens les moins joignables.
+    """
+
+    name = "elevenlabs"
+
+    def __init__(self, key: str | None = None, voice_id: str | None = None,
+                 model: str | None = None, timeout: float = 60.0) -> None:
+        self.key = key or os.environ.get("ELEVENLABS_API_KEY", "")
+        self.voice_id = voice_id or os.environ.get("ELEVENLABS_VOICE_ID", "")
+        self.model = model or os.environ.get(
+            "ELEVENLABS_MODEL", "eleven_multilingual_v2")
+        self.timeout = timeout
+
+    @property
+    def available(self) -> bool:
+        return bool(self.key and self.voice_id)
+
+    def voices(self) -> list[dict]:
+        """Les voix du compte, pour choisir un identifiant sans quitter le terminal."""
+        import json as _json
+        import urllib.request
+
+        req = urllib.request.Request(
+            "https://api.elevenlabs.io/v1/voices",
+            headers={"xi-api-key": self.key, "User-Agent": "ndara"})
+        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            return _json.loads(resp.read()).get("voices", [])
+
+    def synthesize(self, text: str, lang: str) -> bytes:
+        import json as _json
+        import urllib.request
+
+        body = _json.dumps({
+            "text": text,
+            "model_id": self.model,
+            # Stabilité haute : le stimulus doit être le même d'un libellé à
+            # l'autre. Une lecture expressive et variable serait, ici, un défaut.
+            "voice_settings": {"stability": 0.75, "similarity_boost": 0.75,
+                               "style": 0.0, "use_speaker_boost": True},
+        }).encode("utf-8")
+        url = (f"https://api.elevenlabs.io/v1/text-to-speech/{self.voice_id}"
+               # 22 kHz mono : au dessus de la bande passante d'un appel, en
+               # dessous du poids inutile d'un fichier de studio.
+               "?output_format=mp3_22050_32")
+        req = urllib.request.Request(
+            url, data=body,
+            headers={"xi-api-key": self.key, "Content-Type": "application/json",
+                     "Accept": "audio/mpeg", "User-Agent": "ndara"})
+        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            return resp.read()
+
+
+def tts_for_language(lang: str) -> TTSProvider:
+    """Le bon fournisseur par langue, et la raison est écrite ici.
+
+    ElevenLabs pour le français et l'anglais : c'est là qu'il est nettement
+    meilleur. Azure pour le khmer, parce qu'il est le seul grand fournisseur
+    à avoir des voix neuronales khmères en production (km-KH-SreymomNeural).
+    Aucune clé : la démonstration retombe sur la voix du navigateur, et
+    l'interface le dit.
+    """
+    if lang in ("fr", "en"):
+        eleven = ElevenLabsTTS()
+        if eleven.available:
+            return eleven
+    azure = AzureTTS()
+    if azure.available:
+        return azure
+    eleven = ElevenLabsTTS()
+    return eleven if eleven.available else NullTTS()
+
+
 def default_tts() -> TTSProvider:
     azure = AzureTTS()
     return azure if azure.available else NullTTS()
