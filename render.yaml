@@ -1,0 +1,21 @@
+# Deploiement Render, chemin gratuit.
+#
+# Sur render.com : New > Blueprint, choisir ce depot. Tout est deja decrit
+# ici, il n'y a aucun champ a remplir.
+#
+# L'offre gratuite endort le service apres quinze minutes sans visite. Le
+# reveil programme dans .github/workflows/reveil.yml le maintient eveille,
+# et il faut alors surveiller le plafond de 750 heures par mois.
+
+services:
+  - type: web
+    name: ndara
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: HOST
+        value: 0.0.0.0

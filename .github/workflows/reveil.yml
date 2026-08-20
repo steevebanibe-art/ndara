@@ -1,0 +1,25 @@
+# Reveil du service.
+#
+# Ne fait rien tant que la variable DEMO_URL n'existe pas dans le depot.
+# Pour l'activer : Settings > Secrets and variables > Actions > Variables >
+# New repository variable, nom DEMO_URL, valeur l'adresse de la demonstration.
+#
+# Utile seulement sur un hebergeur qui endort les services inactifs. Sur un
+# hebergement qui ne dort pas, laissez la variable vide et rien ne tourne.
+
+name: reveil
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reveiller la demonstration
+        if: vars.DEMO_URL != ''
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 90 "${{ vars.DEMO_URL }}/health" || echo 000)
+          echo "reponse de ${{ vars.DEMO_URL }}/health : $code"
+          if [ "$code" != "200" ]; then echo "::warning::la demonstration n'a pas repondu 200"; fi
