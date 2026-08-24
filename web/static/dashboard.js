@@ -11,19 +11,34 @@ const num = (x, d = 0) => (x == null ? "-" : Number(x).toLocaleString("fr-FR",
 /* Une langue muette est une panne, pas un détail : elle doit se voir. */
 function voixCaps(voix) {
   if (!voix) return [];
-  const out = [];
+  // Une étiquette par langue faisait six lignes dont trois disaient la même
+  // chose, avant tout le contenu utile de la page. On compte, on résume, et
+  // le détail des langues muettes tient dans l'infobulle.
+  const pretes = [], muettes = [], partielles = [];
   Object.entries(voix).forEach(([qid, v]) => {
     Object.entries(v.presents || {}).forEach(([lang, n]) => {
       const attendu = (v.attendu_par_langue || {})[lang] ?? v.attendu;
-      if (n >= attendu) {
-        out.push(`<span class="cap live">voix ${qid}/${lang} : ${n} libellés pré-synthétisés</span>`);
-      } else if (n === 0) {
-        out.push(`<span class="cap off">voix ${qid}/${lang} : aucun fichier, repli sur la voix du navigateur</span>`);
-      } else {
-        out.push(`<span class="cap draft">voix ${qid}/${lang} : ${n} sur ${attendu} seulement</span>`);
-      }
+      const nom = `${qid}/${lang}`;
+      if (n >= attendu) pretes.push(`${nom} (${n})`);
+      else if (n === 0) muettes.push(nom);
+      else partielles.push(`${nom} : ${n} sur ${attendu}`);
     });
   });
+  const out = [];
+  if (pretes.length) {
+    out.push(`<span class="cap live" title="${pretes.join(", ")}">voix de studio : `
+      + `${pretes.length} langue${pretes.length > 1 ? "s" : ""} pré-synthétisée`
+      + `${pretes.length > 1 ? "s" : ""}</span>`);
+  }
+  if (partielles.length) {
+    out.push(`<span class="cap draft" title="${partielles.join(", ")}">voix incomplète : `
+      + `${partielles.length} langue${partielles.length > 1 ? "s" : ""}</span>`);
+  }
+  if (muettes.length) {
+    out.push(`<span class="cap off" title="${muettes.join(", ")}">`
+      + `${muettes.length} langue${muettes.length > 1 ? "s" : ""} sans voix de studio, `
+      + `repli sur celle du navigateur</span>`);
+  }
   return out;
 }
 
@@ -144,16 +159,22 @@ async function load() {
   const fw = d.fieldwork || { counts: {} };
   const w = d.weighting || {};
 
+  // Quatre chiffres de terrain, posés à plat. Les enfermer dans quatre cartes
+  // identiques ne les rendait pas plus lisibles, ça les rendait interchangeables.
   el("tiles").innerHTML = [
-    tile("Entretiens exploitables", num(d.n),
-         `${num(fw.counts.complete)} complets · ${num(fw.counts.partial)} partiels`),
-    tile("Taux de réponse (RR3)", pct(fw.response_rate_rr3),
-         `RR2 : ${pct(fw.response_rate_rr2)}, méthode AAPOR`),
-    tile("Taux de coopération", pct(fw.cooperation_rate),
-         "parmi les personnes effectivement jointes"),
-    tile("Effectif effectif", num(w.effective_n, 0),
-         `effet de plan ${num(w.design_effect, 2)}`),
-  ].join("");
+    ["Entretiens exploitables", num(d.n), "",
+     `${num(fw.counts.complete)} complets, ${num(fw.counts.partial)} partiels`],
+    ["Taux de réponse", pct(fw.response_rate_rr3), "RR3",
+     `RR2 : ${pct(fw.response_rate_rr2)}, méthode AAPOR`],
+    ["Taux de coopération", pct(fw.cooperation_rate), "",
+     "parmi les personnes effectivement jointes"],
+    ["Effectif effectif", num(w.effective_n, 0), "",
+     `effet de plan ${num(w.design_effect, 2)}`],
+  ].map(([k, v, u, s]) => `<div class="ch">
+      <span class="ch-k">${k}</span>
+      <span class="ch-v">${v}${u ? `<i>${u}</i>` : ""}</span>
+      <span class="ch-s">${s}</span>
+    </div>`).join("");
 
   // Estimations. Le tableau devient un dessin : l'intervalle de confiance est
   // tracé à l'échelle, l'estimation posée dessus. C'est toute la thèse du
@@ -200,9 +221,27 @@ async function load() {
   el("disclosure").innerHTML = (d.disclosure || [])
     .map((s) => `<li>${s}</li>`).join("");
 
-  el("field").querySelector("tbody").innerHTML = Object.entries(fw.counts || {})
-    .map(([k, v]) => `<tr><td>${FIELD_LABELS[k] || k}</td><td class="num">${num(v)}</td></tr>`)
-    .join("");
+  // Le terrain était un tableau de sept lignes. C'est un partage, donc ça se
+  // dessine : une barre à l'échelle dit d'un coup d'œil que les non-contacts
+  // dominent, ce que sept nombres alignés laissaient deviner.
+  const ORDRE_ISSUES = ["complete", "partial", "refusal", "noncontact",
+                        "ineligible", "unknown", "other"];
+  const issues = ORDRE_ISSUES
+    .filter((k) => (fw.counts || {})[k])
+    .map((k) => [k, fw.counts[k]]);
+  const totIssues = issues.reduce((a, [, v]) => a + v, 0) || 1;
+  el("field").innerHTML = `
+    <div class="partage">
+      ${issues.map(([k, v]) => `<span class="p-${k}" style="flex:${v}"
+        title="${FIELD_LABELS[k] || k} : ${num(v)}"></span>`).join("")}
+    </div>
+    <div class="partage-l">
+      ${issues.map(([k, v]) => `<div class="pl">
+          <span class="pl-p p-${k}"></span>
+          <span class="pl-k">${FIELD_LABELS[k] || k}</span>
+          <span class="pl-v">${num(v)}<i>${(100 * v / totIssues).toFixed(1).replace(".", ",")} %</i></span>
+        </div>`).join("")}
+    </div>`;
 
   // L'auto-audit sortait en trois cartes identiques, comme tout le reste de
   // la page. Il passe en registre plat : la séparation se fait par l'espace,
@@ -242,13 +281,27 @@ async function load() {
       <td class="num">${i.mean_duration_s == null ? "-" : num(i.mean_duration_s, 1) + " s"}</td>
     </tr>`).join("");
 
-  // corpus
+  // Le corpus est vide, et il le restera tant qu'aucune parole réelle n'aura
+  // été consentie. Trois grandes cartes affichant zéro donnaient l'impression
+  // d'un tableau de bord en panne. Une phrase dit mieux la même chose, et un
+  // corpus qui se remplit reprendra ses chiffres.
   const c = d.corpus || {};
-  el("corpus-tiles").innerHTML = [
-    tile("Parole consentie", num(c.minutes, 2) + " min", `${num(c.segments)} segments`),
-    tile("Locuteurs distincts", num(c.speakers), "tirés au sort, non volontaires"),
-    tile("Expurgations appliquées", num(c.redactions), "identifiants retirés avant stockage"),
-  ].join("");
+  el("corpus-tiles").innerHTML = c.segments
+    ? `<div class="chiffres">
+         <div class="ch"><span class="ch-k">Parole consentie</span>
+           <span class="ch-v">${num(c.minutes, 1)}<i>min</i></span>
+           <span class="ch-s">${num(c.segments)} segments</span></div>
+         <div class="ch"><span class="ch-k">Locuteurs distincts</span>
+           <span class="ch-v">${num(c.speakers)}</span>
+           <span class="ch-s">tirés au sort, jamais volontaires</span></div>
+         <div class="ch"><span class="ch-k">Expurgations</span>
+           <span class="ch-v">${num(c.redactions)}</span>
+           <span class="ch-s">identifiants retirés avant stockage</span></div>
+       </div>`
+    : `<p class="vide">Le corpus est vide, et c'est voulu. Il ne se remplit
+         qu'avec de la parole réelle dont la personne a accepté la conservation,
+         par un consentement distinct de celui de l'enquête. La simulation ne
+         fabrique aucun audio, donc rien de synthétique ne peut le contaminer.</p>`;
 
   el("foot").textContent =
     `Questionnaire ${d.questionnaire ? d.questionnaire.id + " v" + d.questionnaire.version : "-"} · `
@@ -302,7 +355,6 @@ function rendreDirect(p) {
     tile("Appels téléphoniques", num(prov.phone || 0), "collecte réelle"),
     tile("Dans un navigateur", num(prov.web || 0), "démonstration"),
     tile("Simulés", num(prov.simulation || 0), "banc d'essai, canal séparé"),
-    tile("Écrans connectés", num(p.ecrans), "ce tableau de bord"),
   ].join("");
 
   const corps = el("live-rows").querySelector("tbody");

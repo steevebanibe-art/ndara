@@ -10,19 +10,43 @@
    produit, et il ne sert qu'à une chose, la mesure : la ligne, le bouton, le
    focus. Un rouge qui ne sert qu'à ça se lit comme un repère d'instrument, et
    jamais comme une alarme. */
+/* POURQUOI CE TABLEAU DE BORD EST CLAIR
+   -------------------------------------
+   Il a d'abord été sombre, et c'était une erreur que le fond de l'écran
+   cachait mal. Quatre raisons de la corriger.
+
+   Le site est clair : sa toile dominante est la brume. Un évaluateur qui
+   clique sur le bouton passait encore d'un monde à un autre.
+
+   Le lecteur est un ministère et un institut de recherche. Toute la
+   statistique officielle se lit sur fond clair, et un écran sombre déplace
+   le produit du côté de l'outil de surveillance.
+
+   Sur des chiffres denses et des intervalles tracés, le clair donne un
+   meilleur contrôle du contraste.
+
+   Et un dossier officiel finit toujours par être imprimé. Un tableau de bord
+   sombre sort en rectangle noir. La feuille d'impression est en bas de ce
+   fichier, et elle n'aurait rien pu sauver d'un fond sombre.
+
+   Le sombre reste, mais pour une seule chose : la bande « en direct », qui
+   est vraiment une surface de surveillance et qui rejoue les bandes
+   immergées du site. Une page claire, une bande sous l'eau. */
 :root {
-  --bg: #0C181D;
-  --panel: #122127;
-  --panel-2: #182E36;
-  --line: #223A42;
-  --ink: #EDF2F2;
-  --ink-dim: #9FB3B7;
-  --ink-faint: #6E868C;
-  --accent: #D53A1B;
-  --accent-ink: #F0F3F2;
-  --ok: #4FA57C;
-  --warn: #D9A441;
-  --bad: #E0705F;
+  --bg: #E4E9E9;          /* la brume, un ton au dessus des panneaux */
+  --panel: #D6DCDC;       /* la brume du site, exactement */
+  --panel-2: #C7D1D1;
+  --line: #B2BFC0;
+  --ink: #122127;         /* l'eau sous la surface, 11,9 pour 1 sur la brume */
+  --ink-dim: #47565A;
+  --ink-faint: #6F8286;
+  --accent: #D53A1B;      /* la ligne de mesure, usages non textuels */
+  --accent-ink: #8E2A14;  /* le même rouge vu à travers l'eau, 6,1 pour 1 */
+  --ok: #1F6B4A;
+  --warn: #8A5A0F;
+  --bad: #A2352A;
+  --deep: #122127;        /* la bande immergée */
+  --on-deep: #EDF2F2;
   --radius: 10px;
   --display: "Archivo", system-ui, sans-serif;
   --mono: "Martian Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -268,6 +292,128 @@ p.chapo {
 @media (max-width: 560px) {
   .reg-l { grid-template-columns: 1fr; grid-template-areas: "k" "v" "s"; }
   .reg-v { text-align: left; margin: 6px 0 4px; }
+}
+
+/* --------------------------------------------------- la bande immergée
+   Le seul endroit sombre de la page, et il est sombre pour une raison : on
+   y regarde le terrain se faire en direct. Elle déborde de la colonne de
+   lecture comme les bandes immergées du site. */
+
+.panel.live {
+  background: var(--deep); color: var(--on-deep);
+  border: 0; border-radius: 0;
+  margin-left: calc(50% - 50vw); margin-right: calc(50% - 50vw);
+  padding: 30px max(20px, calc(50vw - 470px)) 34px;
+}
+.panel.live .stat {
+  background: rgba(237, 242, 242, .05);
+  border-color: rgba(237, 242, 242, .14);
+}
+.panel.live .stat .label, .panel.live h3.sub { color: rgba(237, 242, 242, .55); }
+.panel.live .stat .sub, .panel.live .hint { color: rgba(237, 242, 242, .62); }
+.panel.live table.data th { background: transparent; color: rgba(237, 242, 242, .5); }
+.panel.live table.data td, .panel.live table.data th { border-color: rgba(237, 242, 242, .13); }
+.panel.live .feed { background: rgba(9, 18, 22, .5); border-color: rgba(237, 242, 242, .13); }
+.panel.live .feed li { border-color: rgba(237, 242, 242, .09); color: rgba(237, 242, 242, .68); }
+.panel.live .feed li.ok span { color: var(--on-deep); }
+.panel.live .wave { border-color: rgba(237, 242, 242, .16); }
+.panel.live .wave-bar { background: rgba(237, 242, 242, .14); }
+.panel.live .wave-ctl label { color: rgba(237, 242, 242, .55); }
+.panel.live .wave-ctl select {
+  background: rgba(237, 242, 242, .07); color: var(--on-deep);
+  border-color: rgba(237, 242, 242, .2);
+}
+.panel.live .mini { background: rgba(237, 242, 242, .16); }
+.panel.live code { background: rgba(237, 242, 242, .1); }
+
+/* ------------------------------------------------- les chiffres de terrain
+   Quatre cartes identiques ne rendaient pas ces mesures plus lisibles, elles
+   les rendaient interchangeables. Posées à plat, séparées par un seul filet,
+   elles reprennent chacune leur poids. */
+
+.chiffres {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0 32px; border-top: 1px solid var(--line);
+}
+.ch { padding: 20px 0 18px; }
+.ch + .ch { border-left: 1px solid var(--line); padding-left: 26px; }
+.ch-k {
+  display: block; font-family: var(--mono); font-size: 10.5px; font-weight: 300;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint);
+}
+.ch-v {
+  display: block; margin: 10px 0 6px;
+  font-family: var(--display); font-weight: 650; letter-spacing: -.03em;
+  font-size: clamp(1.6rem, 3.2vw, 2.2rem); font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.ch-v i {
+  font-style: normal; font-size: .82rem; font-weight: 500;
+  color: var(--ink-dim); margin-left: 6px;
+}
+.ch-s { display: block; font-size: 13px; color: var(--ink-dim); }
+@media (max-width: 620px) {
+  .ch + .ch { border-left: 0; padding-left: 0; border-top: 1px solid var(--line); }
+}
+
+/* ------------------------------------------------------ le partage du terrain
+   Sept nombres alignés laissaient deviner que les non-contacts dominent.
+   Une barre à l'échelle le dit sans qu'on ait à compter. Les couleurs ne
+   sont pas décoratives : un entretien abouti, un refus et un téléphone qui
+   sonne dans le vide sont trois choses différentes. */
+
+.partage {
+  display: flex; height: 30px; border-radius: 3px; overflow: hidden;
+  border: 1px solid var(--line); background: var(--panel);
+}
+.partage span { display: block; min-width: 2px; }
+.p-complete { background: var(--accent); }
+.p-partial { background: rgba(213, 58, 27, .48); }
+.p-refusal { background: #6C7C80; }
+.p-noncontact { background: var(--panel-2); }
+.p-ineligible { background: #9AA8A9; }
+.p-unknown { background: #B9C4C4; }
+.p-other { background: #8B9899; }
+
+.partage-l {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0 26px; margin-top: 6px;
+}
+.pl {
+  display: grid; grid-template-columns: 10px minmax(0, 1fr) auto;
+  gap: 10px; align-items: baseline; padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+}
+.pl-p { width: 10px; height: 10px; border-radius: 2px; align-self: center; }
+.pl-k { font-size: 14px; }
+.pl-v {
+  font-family: var(--mono); font-size: 12px; font-weight: 500;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.pl-v i { font-style: normal; font-weight: 300; color: var(--ink-faint); margin-left: 8px; }
+
+p.vide {
+  margin: 0; padding: 22px 24px; max-width: 68ch;
+  border-left: 3px solid var(--line); background: var(--panel);
+  color: var(--ink-dim); font-size: 15px;
+}
+
+/* ------------------------------------------------------- feuille d'impression
+   Un dossier officiel produit toujours une sortie papier. Ce qui compte au
+   papier, ce sont les chiffres et leur provenance, pas les surfaces. */
+@media print {
+  :root { --bg: #fff; --panel: #fff; --line: #999; --ink: #000; --ink-dim: #333; }
+  body { background: #fff; color: #000; }
+  .panel, .panel.live {
+    background: #fff !important; color: #000 !important;
+    border: 1px solid #999; margin: 0 0 14px; padding: 14px;
+  }
+  .panel.live *, .panel.live .feed li { color: #000 !important; }
+  .e-ic { background: #ccc; border-color: #000; animation: none; transform: none; }
+  .e-pt { background: #000; }
+  .feed, .wave, .wave-ctl, .row-actions, nav.nav, .pouls { display: none; }
+  .estim, .reg-l { break-inside: avoid; }
+  a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 10px; }
 }
 
 /* ------------------------------------------------------- dépôt d'une enquête */

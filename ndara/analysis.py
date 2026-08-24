@@ -171,15 +171,25 @@ def estimate_all(store: Store, q: Questionnaire,
     }
 
 
+def _fr(x: float, decimales: int = 1) -> str:
+    """Un nombre écrit en français : virgule décimale, espace avant le pour cent.
+
+    Ces lignes sont lues par un jury francophone et finissent recopiées dans un
+    rapport. Un « 21.7% » au milieu d'une page française se voit, et il donne
+    l'impression d'un chiffre importé d'ailleurs.
+    """
+    return f"{x:.{decimales}f}".replace(".", ",")
+
+
 def _disclosure(wr, outcomes, quality) -> list[str]:
     """Les limites qu'on publie avec les chiffres. Toujours, pas seulement quand ça arrange."""
     lines = [
-        f"Taux de réponse (RR3, méthode AAPOR) : {outcomes.rr3():.1%} — "
-        f"taux de coopération : {outcomes.cooperation():.1%}.",
+        f"Taux de réponse (RR3, méthode AAPOR) : {_fr(outcomes.rr3() * 100)} %. "
+        f"Taux de coopération : {_fr(outcomes.cooperation() * 100)} %.",
         f"Effectif effectif après pondération : {wr.effective_n:.0f} "
-        f"(effet de plan {wr.design_effect:.2f}).",
+        f"(effet de plan {_fr(wr.design_effect, 2)}).",
         f"Part des entretiens signalés pour revérification par l'auto-audit : "
-        f"{quality['flagged_share']:.1%}.",
+        f"{_fr(quality['flagged_share'] * 100)} %.",
         "Intervalles de confiance à 95 % par jackknife par groupes, avec recalage "
         "des poids à chaque réplique.",
         "Biais de couverture non corrigé : les ménages sans accès à un téléphone "
