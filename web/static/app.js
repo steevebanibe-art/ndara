@@ -29,6 +29,10 @@ const state = {
 async function loadCaps() {
   const caps = await (await fetch("/api/capabilities")).json();
   state.caps = caps;
+  // Arrivée depuis un dépôt d'enquête : on présélectionne l'instrument
+  // fraîchement déposé, pour que le client passe son premier entretien
+  // sans avoir à le chercher dans une liste.
+  const demande = new URLSearchParams(location.search).get("questionnaire");
 
   const qSel = $("questionnaire");
   qSel.innerHTML = "";
@@ -38,6 +42,9 @@ async function loadCaps() {
     o.textContent = `${q.id} — ${q.country}, ${q.steps} questions${q.draft ? " (brouillon)" : ""}`;
     qSel.appendChild(o);
   });
+  if (demande && caps.questionnaires.some((q) => q.id === demande)) {
+    qSel.value = demande;
+  }
   qSel.onchange = fillLanguages;
   fillLanguages();
 

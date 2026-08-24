@@ -151,6 +151,95 @@ class TestCodingPhraseSpontanee(unittest.TestCase):
         self.assertEqual(self.code("hh_size", "je suis au marché là").code, CODE_UNCLEAR)
 
 
+class TestImportQuestionnaire(unittest.TestCase):
+    """Un client dépose son tableau. Ce qui est accepté doit être menable,
+    et ce qui est ambigu doit être refusé avec la ligne fautive."""
+
+    META = {"titre": "Essai import", "objet": "les prix", "pays": "CM",
+            "incitation": "200 francs de crédit"}
+
+    def construire(self, tableau, **meta):
+        from ndara.importer import construire
+        m = dict(self.META)
+        m.update(meta)
+        return construire(tableau, m)
+
+    def test_exemple_fourni_est_valide(self):
+        from ndara.importer import EXEMPLE_CSV
+        res = self.construire(EXEMPLE_CSV)
+        self.assertTrue(res.ok, [p.message for p in res.problemes])
+        self.assertEqual(res.resume["questions"], 7)
+
+    def test_instrument_produit_est_menable(self):
+        """Le seul juge qui compte : le validateur du moteur."""
+        from ndara.importer import EXEMPLE_CSV
+        res = self.construire(EXEMPLE_CSV)
+        q = Questionnaire.from_dict(res.questionnaire)
+        self.assertEqual(len(q.steps), 7)
+        self.assertEqual(q.step("prix_riz").ask_if, {"step": "riz", "equals": "yes"})
+
+    def test_separateur_et_accents_tolerants(self):
+        tableau = ("Libellé,Nature,Réponses\n"
+                   "Aimez-vous le riz ?,Oui/Non,\n"
+                   "Quelle région ?,choix,Centre|Est\n")
+        res = self.construire(tableau)
+        self.assertTrue(res.ok, [p.message for p in res.problemes])
+
+    def test_colonne_question_manquante_est_refusee(self):
+        res = self.construire("type,modalites\nchoix,Femme|Homme\n")
+        self.assertFalse(res.ok)
+        self.assertTrue(any("question" in p.message for p in res.problemes))
+
+    def test_choix_a_une_seule_modalite_est_refuse(self):
+        res = self.construire("question;type;modalites\nVotre sexe ?;choix;Femme\n")
+        self.assertFalse(res.ok)
+        self.assertEqual(res.problemes[0].ligne, 2)
+
+    def test_plus_de_dix_modalites_est_refuse(self):
+        mods = "|".join(f"M{i}" for i in range(11))
+        res = self.construire(f"question;type;modalites\nQuoi ?;choix;{mods}\n")
+        self.assertFalse(res.ok)
+        self.assertIn("dix", res.problemes[0].message)
+
+    def test_filtre_vers_une_question_inexistante_est_refuse(self):
+        res = self.construire("id;question;type;filtre\n"
+                              "a;Avez-vous du riz ?;oui_non;\n"
+                              "b;Combien ?;nombre;fantome=yes\n")
+        self.assertFalse(res.ok)
+        self.assertTrue(any("fantome" in p.message for p in res.problemes))
+
+    def test_filtre_vers_une_question_posee_apres_est_refuse(self):
+        res = self.construire("id;question;type;filtre\n"
+                              "b;Combien ?;nombre;a=yes\n"
+                              "a;Avez-vous du riz ?;oui_non;\n")
+        self.assertFalse(res.ok)
+
+    def test_les_touches_sont_ajoutees_au_libelle(self):
+        """Sans les touches dans le libellé, le repli clavier est impossible
+        pour quelqu'un qui ne sait pas lire."""
+        res = self.construire("question;type;modalites\nVotre sexe ?;choix;Femme|Homme\n")
+        self.assertTrue(res.ok)
+        self.assertIn("tapez 1", res.questionnaire["steps"][0]["text"]["fr"])
+
+    def test_question_sensible_exclue_du_corpus(self):
+        res = self.construire("question;type;sensible\nAvez-vous faim ?;oui_non;oui\n")
+        self.assertTrue(res.ok)
+        self.assertIs(res.questionnaire["steps"][0]["corpus_eligible"], False)
+
+    def test_objet_vide_est_refuse(self):
+        """L'objet est annoncé au répondant dès la première phrase : il n'a
+        pas le droit d'être vague."""
+        res = self.construire("question;type\nQuoi ?;libre\n", objet="")
+        self.assertFalse(res.ok)
+
+    def test_annonce_et_consentements_ne_sont_pas_negociables(self):
+        res = self.construire("question;type\nQuoi ?;libre\n")
+        prompts = res.questionnaire["prompts"]
+        self.assertIn("intelligence artificielle", prompts["announce"]["fr"])
+        self.assertIn("facultatif", prompts["consent_corpus"]["fr"])
+        self.assertNotEqual(prompts["consent_survey"]["fr"], prompts["consent_corpus"]["fr"])
+
+
 class TestDoubleConsent(unittest.TestCase):
     """Le point le plus sensible du dossier : il doit être vérifié par un test."""
 

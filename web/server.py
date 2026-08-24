@@ -36,6 +36,7 @@ from ndara.audit import quality_report  # noqa: E402
 from ndara.coding import default_coder  # noqa: E402
 from ndara.corpus import CorpusWriter  # noqa: E402
 from ndara.engine import InterviewEngine  # noqa: E402
+from ndara.importer import EXEMPLE_CSV, construire  # noqa: E402
 from ndara.providers.asr import MockASR, default_asr  # noqa: E402
 from ndara.providers.telephony import prompt_to_twiml  # noqa: E402
 from ndara.questionnaire import Questionnaire  # noqa: E402
@@ -255,6 +256,17 @@ class App:
             ],
         }
 
+    def register_questionnaire(self, qid: str) -> None:
+        """Rend un questionnaire déposé immédiatement menable.
+
+        Aucun redémarrage : le client dépose son tableau et peut passer son
+        premier entretien dans la foulée. C'est là que se joue la promesse
+        « on charge le questionnaire, la machine fait le reste ».
+        """
+        q = Questionnaire.load(ROOT / "data" / "questionnaires" / f"{qid}.json")
+        self.questionnaires[qid] = q
+        self.engines[qid] = InterviewEngine(self.store, q, self.coder, self.corpus)
+
     def voice_inventory(self) -> dict:
         """Combien de libellés parlent, par questionnaire et par langue.
 
@@ -376,6 +388,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._serve_file(STATIC / "index.html")
         if route == "/dashboard":
             return self._serve_file(STATIC / "dashboard.html")
+        if route in ("/nouvelle", "/nouvelle-enquete"):
+            return self._serve_file(STATIC / "nouvelle.html")
+        if route == "/exemple.csv":
+            return self._send(200, EXEMPLE_CSV.encode("utf-8"),
+                              "text/csv; charset=utf-8")
         if route.startswith("/static/"):
             return self._serve_file(STATIC / route[len("/static/"):])
         if route.startswith("/docs/"):
@@ -458,6 +475,33 @@ class Handler(BaseHTTPRequestHandler):
                               progression=0.0, methode="—", questionnaire=qid)
             APP.bus.publish({"type": "entretien", "etat": "debut", "ligne": ligne})
             return self._json(out)
+
+        if route in ("/api/questionnaire/verifier", "/api/questionnaire"):
+            body = self._read_json()
+            res = construire(body.get("tableau") or "", body.get("meta") or {})
+            sortie = res.to_dict()
+            if route == "/api/questionnaire/verifier" or not res.ok:
+                # La vérification ne dépose rien : on peut la relancer autant
+                # de fois qu'il faut avant d'engager quoi que ce soit.
+                sortie.pop("questionnaire", None)
+                return self._json(sortie, 200 if res.ok else 422)
+
+            doc = res.questionnaire
+            chemin = ROOT / "data" / "questionnaires" / f"{doc['id']}.json"
+            if chemin.exists():
+                return self._json({"ok": False, "problemes": [{
+                    "ligne": None, "colonne": "titre",
+                    "message": f"Une enquête « {doc['id']} » existe déjà.",
+                    "correction": "Changez le titre : deux instruments de même nom "
+                                  "rendraient les données impossibles à démêler."}]}, 409)
+            chemin.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
+            APP.register_questionnaire(doc["id"])
+            sortie["deposee"] = True
+            sortie["chemin"] = f"data/questionnaires/{doc['id']}.json"
+            sortie["voix"] = APP.voice_inventory().get(doc["id"], {})
+            APP.bus.publish({"type": "questionnaire", "id": doc["id"],
+                             "questions": res.resume.get("questions")})
+            return self._json(sortie)
 
         if route == "/api/wave":
             body = self._read_json()

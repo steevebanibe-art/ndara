@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NDARA — déposer une enquête</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%23122127%27/%3E%3Crect x=%274%27 y=%2715%27 width=%2724%27 height=%272%27 fill=%27%23d53a1b%27/%3E%3Ccircle cx=%278%27 cy=%2722%27 r=%271.6%27 fill=%27%23d6dcdc%27/%3E%3Ccircle cx=%2716%27 cy=%2722%27 r=%271.6%27 fill=%27%23d6dcdc%27/%3E%3Ccircle cx=%2724%27 cy=%2722%27 r=%271.6%27 fill=%27%23d6dcdc%27/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <h1>NDARA</h1>
+      <span class="tag">déposer une enquête</span>
+    </div>
+    <nav class="nav">
+      <a href="/">Entretien</a>
+      <a href="/dashboard">Tableau de bord</a>
+      <a href="/nouvelle" class="on">Déposer une enquête</a>
+    </nav>
+  </header>
+
+  <h2 class="section">Votre questionnaire</h2>
+  <div class="panel">
+    <p class="hint" style="margin-top:0">
+      Écrivez vos questions dans un tableur, une par ligne, puis collez le tableau ici.
+      NDARA le vérifie, vous dit ce qui cloche et où, puis se charge du reste : il pose
+      les questions à voix haute, relance quand la réponse est vague, bascule sur les
+      touches du téléphone si nécessaire, code les réponses et sort les données.
+      <a href="/exemple.csv" download>Télécharger un exemple</a>.
+    </p>
+
+    <div class="form2">
+      <label>Titre de l'enquête
+        <input class="txt" id="titre" placeholder="Prix des denrées, août 2026">
+      </label>
+      <label>Pays
+        <input class="txt" id="pays" value="CM" maxlength="2">
+      </label>
+      <label>Objet, annoncé au répondant dès la première phrase
+        <input class="txt" id="objet" placeholder="les prix des denrées de base">
+      </label>
+      <label>Compensation annoncée à la fin
+        <input class="txt" id="incitation" placeholder="200 francs de crédit téléphonique seront envoyés aujourd'hui">
+      </label>
+    </div>
+
+    <label class="bloc">Le tableau des questions
+      <textarea class="txt mono" id="tableau" rows="10" spellcheck="false"
+        placeholder="Collez ici le contenu de votre tableur, en-tête compris."></textarea>
+    </label>
+
+    <div class="row-actions">
+      <button class="act ghost" id="btn-exemple">Remplir avec l'exemple</button>
+      <button class="act ghost" id="btn-verifier">Vérifier</button>
+      <button class="act" id="btn-deposer">Déposer et mener un entretien</button>
+    </div>
+    <p class="hint" id="etat"></p>
+  </div>
+
+  <div id="rapport"></div>
+
+  <h2 class="section">Les colonnes reconnues</h2>
+  <div class="panel">
+    <table class="data">
+      <thead><tr><th>Colonne</th><th>À quoi elle sert</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">question</td><td><b>Obligatoire.</b> Le libellé exact, tel qu'il sera prononcé. Il ne sera jamais reformulé : c'est ce qui garantit que tout l'échantillon entend la même chose.</td></tr>
+        <tr><td class="mono">type</td><td><b>Obligatoire.</b> <code>choix</code>, <code>oui_non</code>, <code>nombre</code>, <code>tranches</code> ou <code>libre</code>.</td></tr>
+        <tr><td class="mono">modalites</td><td>Les réponses possibles, séparées par une barre verticale. Dix au maximum, parce qu'un clavier de téléphone a dix touches.</td></tr>
+        <tr><td class="mono">id</td><td>Un nom court pour désigner la question dans un filtre. Déduit du libellé si vous le laissez vide.</td></tr>
+        <tr><td class="mono">unite</td><td>L'unité d'une question numérique : FCFA, personnes, kilos.</td></tr>
+        <tr><td class="mono">min</td><td rowspan="2">Bornes de refus. Au-delà, NDARA relance au lieu d'accepter une valeur aberrante.</td></tr>
+        <tr><td class="mono">max</td></tr>
+        <tr><td class="mono">plausible</td><td>La plage attendue, par exemple <code>300-2000</code>. Au-delà, la valeur est gardée mais signalée à la revérification.</td></tr>
+        <tr><td class="mono">filtre</td><td>La question n'est posée que dans ce cas, par exemple <code>riz=yes</code>.</td></tr>
+        <tr><td class="mono">sensible</td><td><code>oui</code> : la réponse est exclue du corpus vocal <b>même si le répondant a donné son accord</b>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="section">La liste des numéros à appeler</h2>
+  <div class="panel">
+    <p class="prov prov-simule" style="margin-bottom:16px">
+      Deux enquêtes très différentes portent le même nom, et NDARA ne les mélange jamais.
+    </p>
+    <table class="data">
+      <thead><tr><th>Ce que vous voulez</th><th>Ce que NDARA fait</th><th>Ce que vous pouvez publier</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>Mesurer une population</b><br><span class="hint">« quel est le prix du riz au Cameroun »</span></td>
+          <td>NDARA tire lui-même les numéros au hasard dans les plages publiées par le régulateur. Vous ne fournissez aucune liste.</td>
+          <td><b>Une estimation pondérée avec son intervalle de confiance</b>, opposable, citable dans un rapport officiel.</td>
+        </tr>
+        <tr>
+          <td><b>Interroger vos propres gens</b><br><span class="hint">vos abonnés, vos bénéficiaires, votre panel</span></td>
+          <td>Vous fournissez la liste. NDARA appelle exactement ces personnes, avec les mêmes garanties d'entretien.</td>
+          <td><b>Des résultats sur cette liste, et rien de plus.</b> Aucune pondération de population, parce qu'elle serait fausse.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="hint">
+      Pourquoi ce refus : une pondération transforme un échantillon en portrait d'un pays,
+      et elle n'a de sens que si chacun avait une chance connue d'être tiré. Sur une liste
+      fournie, cette chance n'existe pas. Appliquer quand même la machinerie produirait des
+      chiffres qui ressemblent à une enquête nationale sans en être une, et personne ne
+      verrait la différence avant qu'il soit trop tard. Deux points supplémentaires avant
+      d'appeler une liste : il faut que ces personnes aient accepté d'être contactées, et
+      que vous ayez le droit de nous transmettre leurs numéros.
+    </p>
+  </div>
+
+  <footer class="foot">
+    Les messages d'annonce et les deux consentements séparés sont écrits dans le moteur.
+    Aucun dépôt ne peut les retirer ni les raccourcir.
+  </footer>
+
+</div>
+<script src="/static/nouvelle.js"></script>
+</body>
+</html>

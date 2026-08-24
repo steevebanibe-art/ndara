@@ -127,7 +127,16 @@ class Questionnaire:
 
     @classmethod
     def load(cls, path: str | Path) -> "Questionnaire":
-        raw = json.loads(Path(path).read_text(encoding="utf-8"))
+        return cls.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
+
+    @classmethod
+    def from_dict(cls, raw: dict) -> "Questionnaire":
+        """Même construction, depuis un dictionnaire déjà en mémoire.
+
+        Sert à l'import d'un questionnaire client : celui-ci doit passer
+        exactement le même validateur qu'un fichier du dépôt, sans exception
+        et sans chemin allégé.
+        """
         steps: list[Step] = []
         for sd in raw["steps"]:
             stype = sd["type"]
