@@ -240,6 +240,103 @@ class TestImportQuestionnaire(unittest.TestCase):
         self.assertNotEqual(prompts["consent_survey"]["fr"], prompts["consent_corpus"]["fr"])
 
 
+class TestTelephonie(unittest.TestCase):
+    """La surface téléphonique est publique : elle se défend ou elle est une
+    porte ouverte sur l'instrument."""
+
+    JETON = "jeton_de_test_1234567890"
+    BASE = "https://exemple.test"
+
+    def signer(self, url, form):
+        import base64 as b64
+        import hashlib
+        import hmac
+        base = url + "".join(f"{k}{form[k]}" for k in sorted(form))
+        return b64.b64encode(
+            hmac.new(self.JETON.encode(), base.encode(), hashlib.sha1).digest()).decode()
+
+    def test_signature_valide_est_acceptee(self):
+        from ndara.providers.telephony import signature_valide
+        url = f"{self.BASE}/twiml/step?interview_id=iv_1"
+        form = {"Digits": "1", "CallSid": "CA123"}
+        self.assertTrue(signature_valide(self.JETON, url, form, self.signer(url, form)))
+
+    def test_signature_forgee_est_refusee(self):
+        from ndara.providers.telephony import signature_valide
+        url = f"{self.BASE}/twiml/step?interview_id=iv_1"
+        form = {"Digits": "1", "CallSid": "CA123"}
+        self.assertFalse(signature_valide(self.JETON, url, form, "AAAAbbbbCCCCddddEEEE="))
+
+    def test_parametre_modifie_invalide_la_signature(self):
+        """Le cœur de la garde : on ne doit pas pouvoir changer une réponse
+        en cours de route sans casser la signature."""
+        from ndara.providers.telephony import signature_valide
+        url = f"{self.BASE}/twiml/step?interview_id=iv_1"
+        form = {"Digits": "1", "CallSid": "CA123"}
+        sig = self.signer(url, form)
+        self.assertFalse(signature_valide(self.JETON, url, {**form, "Digits": "2"}, sig))
+
+    def test_sans_jeton_rien_ne_passe(self):
+        from ndara.providers.telephony import signature_valide
+        self.assertFalse(signature_valide("", self.BASE, {}, "peu importe"))
+
+    def test_pas_d_enregistrement_sans_consentement_au_corpus(self):
+        """La règle la plus importante de tout le module : sans accord
+        explicite, aucune voix n'est conservée nulle part."""
+        from ndara.providers.telephony import prompt_to_twiml
+        prompt = {"text": "Combien de personnes ?", "input_type": "number",
+                  "allow_voice": True, "allow_dtmf": False, "options": []}
+        xml = prompt_to_twiml(prompt, action_url="https://x/step", corpus_consenti=False)
+        self.assertNotIn("<Record", xml)
+        self.assertIn("<Gather", xml)
+
+    def test_enregistrement_seulement_apres_consentement(self):
+        from ndara.providers.telephony import prompt_to_twiml
+        prompt = {"text": "Combien de personnes ?", "input_type": "number",
+                  "allow_voice": True, "allow_dtmf": False, "options": []}
+        xml = prompt_to_twiml(prompt, action_url="https://x/step", corpus_consenti=True)
+        self.assertIn("<Record", xml)
+
+    def test_question_sensible_jamais_enregistree_meme_consentie(self):
+        from ndara.providers.telephony import prompt_to_twiml
+        prompt = {"text": "Avez-vous sauté un repas ?", "allow_voice": True,
+                  "allow_dtmf": False, "options": [], "corpus_eligible": False}
+        xml = prompt_to_twiml(prompt, action_url="https://x/step", corpus_consenti=True)
+        self.assertNotIn("<Record", xml)
+
+    def test_le_clavier_reste_offert_sur_les_modalites(self):
+        from ndara.providers.telephony import prompt_to_twiml
+        prompt = {"text": "Femme ou homme ?", "allow_dtmf": True,
+                  "options": [{"code": "F", "dtmf": "1"}, {"code": "M", "dtmf": "2"}]}
+        xml = prompt_to_twiml(prompt, action_url="https://x/step")
+        self.assertIn('input="dtmf speech"', xml)
+        self.assertIn('hints="12"', xml)
+
+    def test_la_boucle_se_referme_toujours(self):
+        """Un silence total ne doit pas laisser l'appel ouvert : il se
+        facture à la minute."""
+        from ndara.providers.telephony import prompt_to_twiml
+        prompt = {"text": "Une question", "allow_dtmf": True,
+                  "options": [{"code": "F", "dtmf": "1"}]}
+        self.assertIn("<Redirect", prompt_to_twiml(prompt, action_url="https://x/step"))
+
+    def test_annonce_n_attend_pas_de_reponse(self):
+        """Chaque seconde d'attente inutile est facturée sur chaque appel."""
+        from ndara.providers.telephony import prompt_to_twiml
+        prompt = {"text": "Bonjour, je suis une intelligence artificielle.",
+                  "allow_voice": False, "allow_dtmf": False, "options": []}
+        xml = prompt_to_twiml(prompt, action_url="https://x/step")
+        self.assertNotIn("<Gather", xml)
+        self.assertNotIn("<Record", xml)
+        self.assertIn("<Redirect", xml)
+
+    def test_fin_d_entretien_raccroche(self):
+        from ndara.providers.telephony import prompt_to_twiml
+        xml = prompt_to_twiml({"text": "Merci.", "done": True}, action_url="https://x/step")
+        self.assertIn("<Hangup/>", xml)
+        self.assertNotIn("<Gather", xml)
+
+
 class TestDoubleConsent(unittest.TestCase):
     """Le point le plus sensible du dossier : il doit être vérifié par un test."""
 

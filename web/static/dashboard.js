@@ -27,6 +27,41 @@ function voixCaps(voix) {
   return out;
 }
 
+/* La téléphonie est soit prête, soit incomplète, et l'écran dit laquelle des
+ * quatre pièces manque. Un « non configuré » sans détail fait perdre une
+ * heure à celui qui doit le réparer. */
+const AIDE_VARIABLES = {
+  TWILIO_ACCOUNT_SID: "l'identifiant du compte, visible sur la console Twilio",
+  TWILIO_AUTH_TOKEN: "le jeton du compte, à côté de l'identifiant",
+  TWILIO_FROM_NUMBER: "le numéro acheté, au format international",
+  NDARA_PUBLIC_URL: "l'adresse publique de ce serveur, que Twilio doit joindre",
+};
+
+function rendreTelephonie(t) {
+  const prete = !!t.prete;
+  const c = t.campagne || {};
+  let html = `<p class="prov ${prete ? "prov-reel" : "prov-simule"}" style="margin-top:0">
+    ${prete
+      ? `Téléphonie prête. Numéro appelant <b>${t.numero}</b>, rappels reçus sur <b>${t.adresse_publique}</b>.`
+      : `Téléphonie non branchée : NDARA sait mener l'entretien, mais pas décrocher le téléphone.`}
+    ${prete ? "" : `<span>Il manque ${(t.manque || []).length} variable${(t.manque || []).length > 1 ? "s" : ""} d'environnement.</span>`}
+  </p>`;
+
+  if (!prete && (t.manque || []).length) {
+    html += `<table class="data"><thead><tr><th>Variable</th><th>Ce que c'est</th></tr></thead><tbody>`
+      + t.manque.map((v) => `<tr><td class="mono">${v}</td><td>${AIDE_VARIABLES[v] || ""}</td></tr>`).join("")
+      + `</tbody></table>`;
+  }
+  el("tel-etat").innerHTML = html;
+  el("btn-camp").disabled = !prete || !!c.active;
+  el("btn-camp-stop").disabled = !c.active;
+  if (c.active) {
+    el("camp-state").textContent =
+      `Campagne en cours : ${c.compose || 0} numéros composés sur ${c.plafond}, `
+      + `${c.places || 0} en ligne, ${c.echecs || 0} échecs.`;
+  }
+}
+
 function tile(label, value, sub) {
   return `<div class="stat">
     <div class="label">${label}</div>
@@ -95,6 +130,8 @@ async function load() {
     ),
     ...voixCaps(caps.voix),
   ].join("");
+
+  rendreTelephonie(caps.telephonie || {});
 
   const fw = d.fieldwork || { counts: {} };
   const w = d.weighting || {};
@@ -272,6 +309,37 @@ function evenement(e) {
     return;
   }
 
+  if (e.type === "campagne") {
+    if (e.etat === "debut") {
+      ligneFeed(`Campagne d'appels lancée : ${e.n} numéros`, "ok");
+      el("btn-camp").disabled = true;
+      el("btn-camp-stop").disabled = false;
+    } else {
+      el("btn-camp").disabled = false;
+      el("btn-camp-stop").disabled = true;
+      el("camp-state").textContent = e.etat === "erreur"
+        ? "La campagne s'est arrêtée : " + (e.message || "")
+        : `Campagne ${e.etat === "arret" ? "interrompue" : "terminée"} : `
+          + `${e.compose} numéros composés, ${e.aboutis} entretiens aboutis, ${e.echecs} échecs.`;
+      ligneFeed(el("camp-state").textContent, e.etat === "erreur" ? "bad" : "ok");
+      load();
+    }
+    return;
+  }
+
+  if (e.type === "appel") {
+    if (e.etat === "place" || e.etat === "echec") {
+      if (e.plafond) el("camp-fill").style.width = Math.round(100 * e.compose / e.plafond) + "%";
+      el("camp-state").textContent = `${e.compose} numéros composés sur ${e.plafond}`;
+      ligneFeed(e.etat === "place"
+        ? `Appel composé · strate ${e.strate}`
+        : `Appel échoué · ${e.erreur || "raison inconnue"}`, e.etat === "place" ? "" : "bad");
+    } else {
+      ligneFeed(`Appel terminé …${e.id} · ${e.etat}`);
+    }
+    return;
+  }
+
   if (e.type === "abouti" || e.type === "tirage") {
     vagueTires = e.tires;
     if (vagueN) {
@@ -313,6 +381,30 @@ el("btn-wave").onclick = async () => {
     el("btn-wave").disabled = false;
     el("wave-state").textContent = "Une vague est déjà en cours.";
   }
+};
+
+el("btn-camp").onclick = async () => {
+  const n = Number(el("camp-n").value);
+  if (!confirm(
+      `Composer ${n} numéro${n > 1 ? "s" : ""} pour de vrai ?\n\n`
+      + `Ce sont de vraies personnes et de l'argent réel : environ `
+      + `${(n * 1.4).toFixed(2)} dollars si tous répondent et vont au bout.`)) return;
+  el("btn-camp").disabled = true;
+  el("camp-fill").style.width = "0%";
+  el("camp-state").textContent = "Tirage de la base de sondage…";
+  const r = await fetch("/api/campagne", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ n, simultanes: 3 }),
+  }).then((x) => x.json()).catch(() => ({ lance: false, raison: "réseau" }));
+  if (!r.lance) {
+    el("btn-camp").disabled = false;
+    el("camp-state").textContent = "Campagne refusée : " + (r.raison || "");
+  }
+};
+
+el("btn-camp-stop").onclick = async () => {
+  await fetch("/api/campagne/arret", { method: "POST" });
+  el("camp-state").textContent = "Arrêt demandé. Les appels déjà en ligne vont au bout.";
 };
 
 brancher();

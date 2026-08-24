@@ -36,7 +36,8 @@ class CallResult:
 class TelephonyAdapter(Protocol):
     name: str
 
-    def place_call(self, msisdn: str, interview_id: str) -> CallResult: ...
+    def place_call(self, msisdn: str, questionnaire: str = "",
+                   stratum: str = "", lang: str = "fr") -> CallResult: ...
 
 
 class NullTelephony:
@@ -44,7 +45,8 @@ class NullTelephony:
 
     name = "null"
 
-    def place_call(self, msisdn: str, interview_id: str) -> CallResult:
+    def place_call(self, msisdn: str, questionnaire: str = "",
+                   stratum: str = "", lang: str = "fr") -> CallResult:
         return CallResult(ok=False, error="aucun fournisseur de téléphonie configuré")
 
 
@@ -69,17 +71,28 @@ class TwilioTelephony:
     def available(self) -> bool:
         return bool(self.sid and self.token and self.from_number and self.webhook_base)
 
-    def place_call(self, msisdn: str, interview_id: str) -> CallResult:
+    def place_call(self, msisdn: str, questionnaire: str = "",
+                   stratum: str = "", lang: str = "fr") -> CallResult:
+        """Compose un numéro. Aucun entretien n'est créé à ce stade.
+
+        L'entretien naît quand quelqu'un décroche, pas quand on compose : créer
+        une ligne pour un téléphone qui sonne dans le vide gonflerait le
+        dénominateur et fausserait le taux de réponse. La corrélation entre
+        l'appel et l'entretien se fait ensuite par l'identifiant d'appel que
+        l'opérateur renvoie.
+        """
         import urllib.request
 
         if not self.available:
             return CallResult(ok=False, error="identifiants Twilio incomplets")
+        contexte = urllib.parse.urlencode(
+            {"questionnaire": questionnaire, "stratum": stratum, "lang": lang})
         url = f"https://api.twilio.com/2010-04-01/Accounts/{self.sid}/Calls.json"
         data = urllib.parse.urlencode({
             "To": msisdn,
             "From": self.from_number,
-            "Url": f"{self.webhook_base}/twiml/start?interview_id={interview_id}",
-            "StatusCallback": f"{self.webhook_base}/twiml/status?interview_id={interview_id}",
+            "Url": f"{self.webhook_base}/twiml/start?{contexte}",
+            "StatusCallback": f"{self.webhook_base}/twiml/status",
             "StatusCallbackEvent": "initiated ringing answered completed",
             "MachineDetection": "Enable",     # répondeur → disposition « non-contact »
             "Timeout": "25",
@@ -103,44 +116,107 @@ class TwilioTelephony:
 # --------------------------------------------------------------------------
 
 def prompt_to_twiml(prompt: dict, *, action_url: str, audio_base: str | None = None,
-                    record_seconds: int = 12) -> str:
-    """Convertit une invite du moteur en TwiML.
+                    record_seconds: int = 12, corpus_consenti: bool = False,
+                    langue: str = "fr") -> str:
+    """Convertit une invite du moteur en instructions téléphoniques.
 
-    Deux modes de saisie sont proposés simultanément : la parole (enregistrée
-    puis transcrite) et le clavier. Le clavier est toujours disponible sur les
-    questions à modalités — c'est le filet quand la transcription échoue.
+    Deux modes de saisie sont toujours offerts ensemble : la parole et le
+    clavier. Le clavier est le filet, et il ne disparaît jamais des questions
+    à modalités : c'est lui qui rattrape une transcription ratée, et c'est le
+    seul recours de quelqu'un qui ne sait pas lire.
+
+    L'ENREGISTREMENT SUIT LE CONSENTEMENT, ET LUI SEUL
+    --------------------------------------------------
+    Par défaut on ne conserve aucune voix : ``Gather`` fait transcrire la
+    réponse au passage, sans qu'un fichier audio soit stocké nulle part.
+    Ce n'est qu'après un accord explicite au corpus que ``Record`` est employé,
+    et seulement là où la parole a une valeur pour le corpus. Enregistrer
+    d'abord et trier ensuite serait une collecte non consentie, quelle que
+    soit la bonne foi du tri.
     """
     lines = ['<?xml version="1.0" encoding="UTF-8"?>', "<Response>"]
+    locale = {"fr": "fr-FR", "en": "en-US", "km": "km-KH"}.get(langue, "fr-FR")
+
+    def dire(texte: str) -> str:
+        return f'<Say language="{locale}">{escape(texte)}</Say>'
 
     audio_url = prompt.get("audio_url")
     if audio_base and audio_url:
         lines.append(f"<Play>{escape(audio_base.rstrip('/') + audio_url)}</Play>")
     else:
-        lines.append(f"<Say>{escape(prompt.get('text', ''))}</Say>")
+        lines.append(dire(prompt.get("text", "")))
 
     if prompt.get("note"):
-        lines.append(f"<Say>{escape(prompt['note'])}</Say>")
+        lines.append(dire(prompt["note"]))
 
     if prompt.get("done"):
         lines.append("<Hangup/>")
         lines.append("</Response>")
         return "\n".join(lines)
 
+    if not prompt.get("allow_voice") and not prompt.get("allow_dtmf"):
+        # L'annonce n'attend aucune réponse. Lui coller une écoute ferait
+        # patienter sept secondes chaque appel, facturées à la minute, pour
+        # un silence que personne n'a demandé. On enchaîne.
+        lines.append('<Pause length="1"/>')
+        lines.append(f'<Redirect method="POST">{escape(action_url)}</Redirect>')
+        lines.append("</Response>")
+        return "\n".join(lines)
+
     if prompt.get("allow_dtmf") and prompt.get("options"):
-        digits = "".join(o["dtmf"] for o in prompt["options"] if o.get("dtmf"))
+        digits = "".join(o["dtmf"] or "" for o in prompt["options"])
         lines.append(
-            f'<Gather input="dtmf speech" numDigits="1" timeout="6" '
+            f'<Gather input="dtmf speech" numDigits="1" timeout="7" '
             f'action="{escape(action_url)}" method="POST" '
-            f'speechTimeout="auto" language="fr-FR" hints="{escape(digits)}"/>'
+            f'speechTimeout="auto" language="{locale}" hints="{escape(digits)}"/>'
         )
-    else:
+    elif corpus_consenti and prompt.get("corpus_eligible", True):
         lines.append(
             f'<Record action="{escape(action_url)}" method="POST" '
             f'maxLength="{record_seconds}" timeout="3" playBeep="true" '
-            f'trim="trim-silence"/>'
+            f'trim="trim-silence" transcribe="false"/>'
         )
+    else:
+        # Réponse libre ou numérique sans accord au corpus : on transcrit au
+        # vol, on ne garde rien.
+        lines.append(
+            f'<Gather input="speech" timeout="7" speechTimeout="auto" '
+            f'action="{escape(action_url)}" method="POST" language="{locale}"/>'
+        )
+
+    # Silence complet : la boucle doit se refermer, sinon l'appel reste ouvert
+    # et se facture pour rien.
+    lines.append(f'<Redirect method="POST">{escape(action_url)}</Redirect>')
     lines.append("</Response>")
     return "\n".join(lines)
+
+
+def signature_valide(token: str, url: str, form: dict[str, str], signature: str) -> bool:
+    """Vérifie qu'une requête vient bien de Twilio et pas d'un inconnu.
+
+    Sans cette vérification, les routes téléphoniques d'un serveur public sont
+    une porte ouverte : n'importe qui peut ouvrir des entretiens, y répondre à
+    la place des gens et fabriquer des données qui entreront dans les
+    estimations sans laisser de trace. Sur un instrument statistique, c'est la
+    faille la plus grave possible.
+
+    Le calcul est celui de Twilio : l'URL complète, puis chaque paramètre du
+    formulaire par ordre alphabétique, nom collé à sa valeur, le tout signé en
+    HMAC-SHA1 avec le jeton du compte.
+
+    La comparaison est à temps constant : comparer deux signatures avec ``==``
+    laisse fuir, par la durée, combien de caractères sont justes.
+    """
+    import hashlib
+    import hmac
+
+    if not token or not signature:
+        return False
+    base = url + "".join(f"{k}{form[k]}" for k in sorted(form))
+    attendu = base64.b64encode(
+        hmac.new(token.encode("utf-8"), base.encode("utf-8"), hashlib.sha1).digest()
+    ).decode()
+    return hmac.compare_digest(attendu, signature)
 
 
 def default_telephony() -> TelephonyAdapter:

@@ -38,7 +38,9 @@ from ndara.corpus import CorpusWriter  # noqa: E402
 from ndara.engine import InterviewEngine  # noqa: E402
 from ndara.importer import EXEMPLE_CSV, construire  # noqa: E402
 from ndara.providers.asr import MockASR, default_asr  # noqa: E402
-from ndara.providers.telephony import prompt_to_twiml  # noqa: E402
+from ndara.providers.telephony import (  # noqa: E402
+    default_telephony, prompt_to_twiml, signature_valide,
+)
 from ndara.questionnaire import Questionnaire  # noqa: E402
 from ndara.sampling import load_margins  # noqa: E402
 from ndara.storage import Store  # noqa: E402
@@ -111,6 +113,10 @@ class App:
         self.margins = {
             "prix_denrees_cm": load_margins(ROOT / "data" / "margins" / "cm_margins.json"),
         }
+        self.tel = default_telephony()
+        self.par_call_sid: dict[str, str] = {}
+        self.campagne: dict = {"active": False, "places": 0, "plafond": 0,
+                               "aboutis": 0, "echecs": 0, "arret": False}
         self.bus = Bus()
         # Les entretiens en cours, vus du poste de contrôle. Un entretien qui
         # se termine ou qui reste muet trop longtemps en sort.
@@ -168,6 +174,87 @@ class App:
     # ------------------------------------------------------------------
     # Une vague simulée, menée sous les yeux du visiteur
     # ------------------------------------------------------------------
+
+    def start_campagne(self, n: int, qid: str, simultanes: int = 3) -> dict:
+        """Compose réellement des numéros. De l'argent part à chaque appel.
+
+        Trois garde-fous, et aucun n'est décoratif. Un plafond dur de numéros,
+        parce qu'une boucle qui s'emballe se facture à la minute. Un nombre
+        d'appels simultanés borné, parce qu'un opérateur coupe une ligne qui
+        se comporte comme un automate d'abus. Et un bouton d'arrêt qui vide la
+        file immédiatement.
+        """
+        from ndara.sampling import draw_frame, to_sample_units
+
+        if self.campagne["active"]:
+            return {"lance": False, "raison": "une campagne est déjà en cours"}
+        etat = self.telephony_state()
+        if not etat["prete"]:
+            return {"lance": False, "raison": "téléphonie non configurée",
+                    "manque": etat["manque"]}
+        if qid not in self.questionnaires:
+            return {"lance": False, "raison": f"questionnaire « {qid} » inconnu"}
+        n = max(1, min(200, int(n)))
+
+        self.campagne.update({"active": True, "places": 0, "plafond": n,
+                              "aboutis": 0, "echecs": 0, "arret": False,
+                              "questionnaire": qid, "compose": 0})
+        threading.Thread(target=self._run_campagne,
+                         args=(n, qid, max(1, min(10, simultanes))),
+                         daemon=True).start()
+        return {"lance": True, "plafond": n, "questionnaire": qid}
+
+    def _run_campagne(self, n: int, qid: str, simultanes: int) -> None:
+        from ndara.sampling import draw_frame, to_sample_units
+
+        try:
+            q = self.questionnaires[qid]
+            graine = random.randrange(1, 10_000_000)
+            units = to_sample_units(draw_frame(q.country, n, seed=graine))
+            self.store.add_sample_units(units)
+            self.bus.publish({"type": "campagne", "etat": "debut", "n": n,
+                              "questionnaire": qid})
+            for u in units:
+                if self.campagne["arret"]:
+                    break
+                # On attend qu'une ligne se libère plutôt que d'inonder.
+                attente = 0
+                while self.campagne["places"] >= simultanes and not self.campagne["arret"]:
+                    time.sleep(1.0)
+                    attente += 1
+                    if attente > 180:      # une ligne bloquée ne bloque pas la vague
+                        self.campagne["places"] = max(0, self.campagne["places"] - 1)
+                        break
+                if self.campagne["arret"]:
+                    break
+                res = self.tel.place_call(u.msisdn, questionnaire=qid,
+                                          stratum=u.stratum, lang=q.languages[0])
+                self.campagne["compose"] += 1
+                if res.ok:
+                    self.campagne["places"] += 1
+                    self.store.log("telephony_appel_place", None,
+                                   call_sid=res.provider_call_id, strate=u.stratum)
+                else:
+                    self.campagne["echecs"] += 1
+                    self.store.log("telephony_appel_echoue", None, erreur=(res.error or "")[:200])
+                self.bus.publish({"type": "appel", "etat": "place" if res.ok else "echec",
+                                  "compose": self.campagne["compose"],
+                                  "plafond": n, "strate": u.stratum,
+                                  "erreur": None if res.ok else (res.error or "")[:120]})
+                time.sleep(1.5)      # cadence : un opérateur coupe une rafale
+            self.bus.publish({"type": "campagne",
+                              "etat": "arret" if self.campagne["arret"] else "fin",
+                              "compose": self.campagne["compose"],
+                              "aboutis": self.campagne["aboutis"],
+                              "echecs": self.campagne["echecs"]})
+        except Exception as exc:
+            self.bus.publish({"type": "campagne", "etat": "erreur", "message": str(exc)[:200]})
+        finally:
+            self.campagne["active"] = False
+
+    def stop_campagne(self) -> dict:
+        self.campagne["arret"] = True
+        return {"arret": True, "compose": self.campagne.get("compose", 0)}
 
     def start_wave(self, n: int, cadence: float = 0.05) -> bool:
         """Lance une vague simulée en tâche de fond, entretien par entretien.
@@ -247,6 +334,7 @@ class App:
             "asr_live": not isinstance(self.asr, MockASR),
             "coder": self.coder.name,
             "telephony": os.environ.get("TWILIO_ACCOUNT_SID") is not None,
+            "telephonie": self.telephony_state(),
             "voix": self.voice_inventory(),
             "questionnaires": [
                 {"id": qid, "languages": q.languages, "country": q.country,
@@ -254,6 +342,112 @@ class App:
                  "draft": q.version.endswith("draft")}
                 for qid, q in self.questionnaires.items()
             ],
+        }
+
+    # ------------------------------------------------------------------
+    # Téléphonie
+    # ------------------------------------------------------------------
+
+    def bind_call(self, call_sid: str | None, interview_id: str) -> None:
+        """Relie l'appel de l'opérateur à l'entretien né au décrochage.
+
+        C'est cette table qui permet, à la fin de l'appel, de savoir de quel
+        entretien on parle : l'opérateur ne connaît que son propre identifiant.
+        """
+        if not call_sid:
+            return
+        with self._live_lock:
+            self.par_call_sid[call_sid] = interview_id
+            if len(self.par_call_sid) > 2000:      # rien ne doit croître sans fin
+                for vieux in list(self.par_call_sid)[:500]:
+                    self.par_call_sid.pop(vieux, None)
+
+    def fetch_recording(self, url: str) -> bytes | None:
+        """Récupère un enregistrement chez l'opérateur, uniquement s'il existe.
+
+        Appelée seulement quand le consentement au corpus a été donné : c'est
+        la route téléphonique qui vérifie avant d'appeler ici, et rien dans
+        cette fonction ne doit lui permettre de l'oublier.
+        """
+        import urllib.request
+
+        sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
+        token = os.environ.get("TWILIO_AUTH_TOKEN", "")
+        if not (sid and token and url):
+            return None
+        auth = base64.b64encode(f"{sid}:{token}".encode()).decode()
+        req = urllib.request.Request(url + ".wav",
+                                     headers={"Authorization": f"Basic {auth}"})
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                return resp.read()
+        except Exception as exc:
+            self.store.log("telephony_enregistrement_indisponible", None, erreur=str(exc)[:160])
+            return None
+
+    def close_call(self, interview_id: str | None, form: dict) -> None:
+        """Traduit la fin d'un appel en disposition AAPOR.
+
+        Un appel qui sonne dans le vide, un répondeur, une ligne occupée et un
+        raccrochage en plein entretien ne sont pas la même chose. Les confondre
+        fausserait le taux de réponse, qui est le premier chiffre qu'un
+        statisticien regarde.
+        """
+        from ndara.models import Disposition, utcnow
+
+        statut = (form.get("CallStatus") or "").lower()
+        repondu_par = (form.get("AnsweredBy") or "").lower()
+        if statut in ("initiated", "ringing", "queued", "in-progress"):
+            return
+
+        self.campagne["places"] = max(0, self.campagne["places"] - 1)
+        if not interview_id:
+            if statut in ("busy", "no-answer", "canceled", "failed"):
+                self.campagne["echecs"] += 1
+            return
+
+        iv = self.store.get_interview(interview_id)
+        if iv is None:
+            return
+        nouvelle = None
+        if repondu_par.startswith("machine"):
+            nouvelle = Disposition.NONCONTACT.value
+        elif statut in ("busy", "no-answer", "canceled", "failed"):
+            nouvelle = Disposition.NONCONTACT.value
+        elif statut == "completed" and iv.disposition == Disposition.IN_PROGRESS.value:
+            # Décroché puis raccroché avant la fin : ce n'est ni un refus ni un
+            # non-contact, c'est un abandon, et il a son propre code.
+            nouvelle = Disposition.BREAKOFF.value
+
+        if nouvelle:
+            iv.disposition = nouvelle
+            iv.ended_at = utcnow()
+            self.store.save_interview(iv)
+            self.store.log("telephony_disposition", interview_id, disposition=nouvelle,
+                           statut=statut, repondu_par=repondu_par or "—")
+            self.drop(interview_id)
+            self.bus.publish({"type": "appel", "etat": nouvelle, "id": interview_id[-6:]})
+        elif iv.disposition == Disposition.COMPLETE.value:
+            self.campagne["aboutis"] += 1
+
+    def telephony_state(self) -> dict:
+        """Ce qui manque encore pour pouvoir appeler, nommé un par un."""
+        manque = []
+        if not os.environ.get("TWILIO_ACCOUNT_SID"):
+            manque.append("TWILIO_ACCOUNT_SID")
+        if not os.environ.get("TWILIO_AUTH_TOKEN"):
+            manque.append("TWILIO_AUTH_TOKEN")
+        if not os.environ.get("TWILIO_FROM_NUMBER"):
+            manque.append("TWILIO_FROM_NUMBER")
+        if not os.environ.get("NDARA_PUBLIC_URL"):
+            manque.append("NDARA_PUBLIC_URL")
+        return {
+            "fournisseur": self.tel.name,
+            "prete": not manque,
+            "manque": manque,
+            "numero": os.environ.get("TWILIO_FROM_NUMBER", ""),
+            "adresse_publique": os.environ.get("NDARA_PUBLIC_URL", ""),
+            "campagne": dict(self.campagne),
         }
 
     def register_questionnaire(self, qid: str) -> None:
@@ -503,6 +697,16 @@ class Handler(BaseHTTPRequestHandler):
                              "questions": res.resume.get("questions")})
             return self._json(sortie)
 
+        if route == "/api/campagne":
+            body = self._read_json()
+            res = APP.start_campagne(int(body.get("n") or 10),
+                                     body.get("questionnaire") or APP.default_qid,
+                                     int(body.get("simultanes") or 3))
+            return self._json(res, 200 if res.get("lance") else 409)
+
+        if route == "/api/campagne/arret":
+            return self._json(APP.stop_campagne())
+
         if route == "/api/wave":
             body = self._read_json()
             n = max(10, min(400, int(body.get("n") or 120)))
@@ -577,33 +781,86 @@ class Handler(BaseHTTPRequestHandler):
         assert APP is not None
         qs = urllib.parse.parse_qs(parsed.query)
         form = self._read_form()
-        qid = (qs.get("questionnaire") or [APP.default_qid])[0]
-        engine = APP.engines[qid]
         base = os.environ.get("NDARA_PUBLIC_URL", "").rstrip("/")
 
+        # ---- garde d'entrée : personne d'autre que l'opérateur téléphonique --
+        #
+        # Ces routes ouvrent des entretiens et y répondent. Sur une adresse
+        # publique, les laisser sans signature reviendrait à laisser un inconnu
+        # fabriquer des données qui entreraient ensuite dans les estimations.
+        # Aucun contournement n'est prévu, pas même pour les essais : un test
+        # signe ses requêtes comme le ferait l'opérateur.
+        token = os.environ.get("TWILIO_AUTH_TOKEN", "")
+        if not token:
+            APP.store.log("telephony_rejet", None, raison="aucun jeton configuré")
+            return self._send(503, b"telephonie non configuree", "text/plain")
+        url = base + self.path if base else self.path
+        if not signature_valide(token, url, form,
+                                self.headers.get("X-Twilio-Signature", "")):
+            APP.store.log("telephony_rejet", (qs.get("interview_id") or [None])[0],
+                          raison="signature invalide", route=route)
+            return self._send(403, b"signature invalide", "text/plain")
+
+        qid = (qs.get("questionnaire") or [APP.default_qid])[0]
+        if qid not in APP.engines:
+            return self._send(404, b"questionnaire inconnu", "text/plain")
+        engine = APP.engines[qid]
+
+        def repondre(prompt, interview_id: str, langue: str) -> None:
+            iv = APP.store.get_interview(interview_id)
+            consenti = bool(iv and iv.consent_corpus == "granted")
+            action = f"{base}/twiml/step?interview_id={interview_id}&questionnaire={qid}"
+            xml = prompt_to_twiml(prompt.to_dict(), action_url=action, audio_base=base,
+                                  corpus_consenti=consenti, langue=langue)
+            ligne = APP.touch(interview_id, canal="phone", langue=langue,
+                              etape=prompt.step_id, questionnaire=qid,
+                              progression=round(prompt.progress or 0.0, 3),
+                              methode="téléphone")
+            if prompt.done:
+                APP.drop(interview_id)
+            APP.bus.publish({"type": "entretien",
+                             "etat": "fin" if prompt.done else "tour", "ligne": ligne})
+            self._send(200, xml.encode("utf-8"), "text/xml")
+
         if route == "/twiml/start":
-            prompt = engine.start(language=(qs.get("lang") or ["fr"])[0],
+            langue = (qs.get("lang") or ["fr"])[0]
+            prompt = engine.start(language=langue,
                                   stratum=(qs.get("stratum") or ["MTN"])[0],
                                   channel="phone",
                                   msisdn=form.get("To"))
-            action = f"{base}/twiml/step?interview_id={prompt.interview_id}&questionnaire={qid}"
-            xml = prompt_to_twiml(prompt.to_dict(), action_url=action, audio_base=base)
-            return self._send(200, xml.encode("utf-8"), "text/xml")
+            APP.store.log("telephony_appel_decroche", prompt.interview_id,
+                          call_sid=form.get("CallSid"))
+            APP.bind_call(form.get("CallSid"), prompt.interview_id)
+            return repondre(prompt, prompt.interview_id, langue)
 
         if route == "/twiml/step":
             interview_id = (qs.get("interview_id") or [""])[0]
-            prompt = engine.submit(
-                interview_id,
-                text=form.get("SpeechResult"),
-                dtmf=form.get("Digits"),
-                duration_ms=int(float(form.get("RecordingDuration", 0)) * 1000) or None,
-            )
-            action = f"{base}/twiml/step?interview_id={interview_id}&questionnaire={qid}"
-            xml = prompt_to_twiml(prompt.to_dict(), action_url=action, audio_base=base)
-            return self._send(200, xml.encode("utf-8"), "text/xml")
+            iv = APP.store.get_interview(interview_id)
+            if iv is None:
+                return self._send(404, b"entretien inconnu", "text/plain")
+            duree = int(float(form.get("RecordingDuration") or 0) * 1000) or None
+            audio = None
+            if form.get("RecordingUrl") and iv.consent_corpus == "granted":
+                audio = APP.fetch_recording(form["RecordingUrl"])
+            try:
+                prompt = engine.submit(
+                    interview_id,
+                    text=form.get("SpeechResult"),
+                    dtmf=form.get("Digits"),
+                    audio_bytes=audio,
+                    audio_ext="wav",
+                    asr_confidence=float(form["Confidence"]) if form.get("Confidence") else None,
+                    duration_ms=duree,
+                )
+            except KeyError:
+                return self._send(404, b"entretien inconnu", "text/plain")
+            return repondre(prompt, interview_id, iv.language)
 
         if route == "/twiml/status":
-            APP.store.log("telephony_status", (qs.get("interview_id") or [None])[0], **form)
+            iid = (APP.par_call_sid.get(form.get("CallSid") or "")
+                   or (qs.get("interview_id") or [None])[0])
+            APP.store.log("telephony_status", iid, **form)
+            APP.close_call(iid, form)
             return self._send(200, b"", "text/plain")
 
         return self._send(404, b"not found", "text/plain")

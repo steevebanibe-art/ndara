@@ -76,6 +76,36 @@
     <p class="hint" id="wave-state"></p>
   </div>
 
+  <h2 class="section">Téléphonie</h2>
+  <div class="panel" id="tel-panel">
+    <div id="tel-etat"></div>
+    <div class="wave">
+      <div>
+        <b>Lancer une campagne d'appels réels</b>
+        <p class="hint">
+          Ceci compose de vrais numéros et engage de l'argent : environ 1,38 $ de
+          minutes pour un entretien de deux minutes trente vers un mobile camerounais.
+          Les numéros sont tirés au hasard dans les plages publiées par le régulateur,
+          jamais dans un fichier d'abonnés. Le bouton rouge arrête tout immédiatement.
+        </p>
+      </div>
+      <div class="wave-ctl">
+        <label>Numéros
+          <select id="camp-n">
+            <option value="1">1, essai</option>
+            <option value="5">5</option>
+            <option value="25" selected>25</option>
+            <option value="100">100</option>
+          </select>
+        </label>
+        <button class="act" id="btn-camp">Appeler</button>
+        <button class="act ghost" id="btn-camp-stop">Arrêter</button>
+      </div>
+    </div>
+    <div class="wave-bar"><i id="camp-fill"></i></div>
+    <p class="hint" id="camp-state"></p>
+  </div>
+
   <h2 class="section">Collecte</h2>
   <div class="grid" id="tiles"></div>
 
