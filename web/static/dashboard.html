@@ -115,19 +115,16 @@
   <div class="grid" id="tiles"></div>
 
   <h2 class="section">Estimations pondérées</h2>
-  <div class="panel">
-    <table class="data" id="est">
-      <thead><tr>
-        <th>Indicateur</th><th class="num">n</th><th class="num">Estimation</th>
-        <th>Intervalle à 95 %</th><th class="num">Erreur-type</th>
-      </tr></thead>
-      <tbody></tbody>
-    </table>
-    <p class="hint" id="est-empty" style="display:none">
-      Aucun entretien exploitable pour l'instant. Lancez <code>python scripts/simulate.py</code>
-      ou passez un entretien depuis la page d'accueil.
-    </p>
-  </div>
+  <p class="chapo">
+    Chaque chiffre est dessiné avec l'étendue de son erreur. Un intervalle large
+    veut dire que l'échantillon ne permet pas encore de trancher, et il vaut mieux
+    le voir que le lire en petit dans une colonne.
+  </p>
+  <div class="estims" id="est"></div>
+  <p class="hint" id="est-empty" style="display:none">
+    Aucun entretien exploitable pour l'instant. Lancez une vague plus haut,
+    ou passez un entretien depuis la page d'accueil.
+  </p>
 
   <h2 class="section">Ce qu'on publie avec les chiffres</h2>
   <div class="panel"><ul class="disclosure" id="disclosure"></ul></div>

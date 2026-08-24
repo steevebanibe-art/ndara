@@ -161,6 +161,115 @@ h3.sub {
 
 table.data td.mono { font-family: var(--mono); font-size: 12.5px; color: var(--ink-dim); }
 
+/* ------------------------------------------- les estimations, dessinées
+   Le produit vend un chiffre accompagné de la mesure de son erreur. Rendre
+   cela par un tableau revenait à cacher l'argument dans une colonne. Ici
+   l'intervalle est tracé à l'échelle, l'estimation posée dessus, et un
+   intervalle large se voit avant d'être lu.
+
+   Ces blocs n'ont ni cadre ni fond : ils reposent sur le sol de la page.
+   Toutes les sections du tableau de bord étaient la même boîte, et c'est
+   cette répétition qui le faisait ressembler à n'importe quel outil. */
+
+p.chapo {
+  color: var(--ink-dim); max-width: 62ch; margin: -8px 0 26px; font-size: 15px;
+}
+
+.estims { display: grid; gap: 0; }
+
+.estim {
+  padding: 26px 0 24px;
+  border-top: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 210px);
+  grid-template-areas: "tete val" "axe axe" "bornes bornes";
+  gap: 4px 30px; align-items: baseline;
+}
+.estim:last-child { border-bottom: 1px solid var(--line); }
+
+.e-tete { grid-area: tete; }
+.e-tete h3 { margin: 0; font-size: 1.06rem; font-weight: 600; letter-spacing: -.01em; }
+.e-n {
+  display: block; margin-top: 4px;
+  font-family: var(--mono); font-size: 10.5px; font-weight: 300;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint);
+}
+
+.e-val {
+  grid-area: val; text-align: right; line-height: 1;
+  font-family: var(--display); font-variant-numeric: tabular-nums;
+}
+.e-val b { font-size: clamp(2rem, 4.6vw, 2.9rem); font-weight: 650; letter-spacing: -.03em; }
+.e-val .u { font-size: 1rem; font-weight: 500; color: var(--ink-dim); margin-left: 5px; }
+
+.e-axe { grid-area: axe; position: relative; height: 22px; margin-top: 16px; }
+.e-piste {
+  position: absolute; left: 0; right: 0; top: 10px; height: 1px;
+  background: var(--line);
+}
+/* L'intervalle est le seul objet rouge de la page, comme la ligne de mesure
+   du site : le rouge ne sert qu'à la mesure, jamais à décorer. */
+.e-ic {
+  position: absolute; top: 7px; height: 7px;
+  background: rgba(213, 58, 27, .30);
+  border-left: 1.5px solid var(--accent);
+  border-right: 1.5px solid var(--accent);
+  transform: scaleX(.001); transform-origin: center;
+  animation: ouvre .8s cubic-bezier(.22,.61,.36,1) forwards;
+}
+.e-pt {
+  position: absolute; top: 4px; width: 3px; height: 13px;
+  background: var(--accent); transform: translateX(-50%);
+}
+@keyframes ouvre { to { transform: scaleX(1); } }
+@media (prefers-reduced-motion: reduce) { .e-ic { animation: none; transform: none; } }
+
+.e-bornes {
+  grid-area: bornes; display: flex; justify-content: space-between; align-items: baseline;
+  font-family: var(--mono); font-size: 10.5px; font-weight: 300;
+  letter-spacing: .07em; color: var(--ink-faint);
+  font-variant-numeric: tabular-nums; margin-top: 2px;
+}
+.e-bornes .e-mid { text-transform: uppercase; letter-spacing: .11em; }
+
+@media (max-width: 640px) {
+  .estim { grid-template-columns: 1fr; grid-template-areas: "tete" "val" "axe" "bornes"; }
+  .e-val { text-align: left; margin-top: 10px; }
+}
+
+/* ------------------------------------------------- le registre de l'audit
+   Aucun cadre. La séparation se fait par l'espace et une seule ligne fine.
+   Deux des trois chiffres de cette section sont mauvais, et les enfermer
+   dans de jolies cartes reviendrait à les habiller. */
+
+.registre { display: grid; gap: 0; }
+.reg-l {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "k v" "s v";
+  gap: 2px 28px; align-items: baseline;
+  padding: 22px 0; border-top: 1px solid var(--line);
+}
+.reg-l:last-child { border-bottom: 1px solid var(--line); }
+.reg-k {
+  grid-area: k; font-size: 1.02rem; font-weight: 600; letter-spacing: -.01em;
+}
+.reg-s { grid-area: s; font-size: 13.5px; color: var(--ink-dim); max-width: 54ch; }
+.reg-v {
+  grid-area: v; align-self: center; text-align: right; white-space: nowrap;
+  font-family: var(--display); font-weight: 650; letter-spacing: -.03em;
+  font-size: clamp(1.7rem, 3.6vw, 2.4rem); font-variant-numeric: tabular-nums;
+}
+.reg-v i {
+  font-style: normal; font-size: .92rem; font-weight: 500;
+  color: var(--ink-dim); margin-left: 6px;
+}
+.reg-v.reg-alerte { color: var(--accent); }
+
+@media (max-width: 560px) {
+  .reg-l { grid-template-columns: 1fr; grid-template-areas: "k" "v" "s"; }
+  .reg-v { text-align: left; margin: 6px 0 4px; }
+}
+
 /* ------------------------------------------------------- dépôt d'une enquête */
 
 .form2 {

@@ -4,7 +4,7 @@
  */
 
 const el = (id) => document.getElementById(id);
-const pct = (x) => (x == null ? "-" : (x * 100).toFixed(1) + " %");
+const pct = (x) => (x == null ? "-" : num(x * 100, 1) + " %");
 const num = (x, d = 0) => (x == null ? "-" : Number(x).toLocaleString("fr-FR",
   { minimumFractionDigits: d, maximumFractionDigits: d }));
 
@@ -60,6 +60,14 @@ function rendreTelephonie(t) {
       `Campagne en cours : ${c.compose || 0} numéros composés sur ${c.plafond}, `
       + `${c.places || 0} en ligne, ${c.echecs || 0} échecs.`;
   }
+}
+
+/* Une borne d'échelle qui se lit : 1, 2, 5 fois une puissance de dix. */
+function arrondiHaut(v) {
+  if (!isFinite(v) || v <= 0) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(v)));
+  const r = v / p;
+  return (r <= 1 ? 1 : r <= 2 ? 2 : r <= 5 ? 5 : 10) * p;
 }
 
 function tile(label, value, sub) {
@@ -147,16 +155,46 @@ async function load() {
          `effet de plan ${num(w.design_effect, 2)}`),
   ].join("");
 
-  // estimations
-  const tb = el("est").querySelector("tbody");
+  // Estimations. Le tableau devient un dessin : l'intervalle de confiance est
+  // tracé à l'échelle, l'estimation posée dessus. C'est toute la thèse du
+  // projet rendue visible, au lieu d'être écrite en petit dans une colonne.
   const rows = (d.estimates || []).filter((r) => r.estimate != null);
-  tb.innerHTML = rows.map((r) => `<tr>
-      <td>${r.label}</td>
-      <td class="num">${num(r.n)}</td>
-      <td class="num"><b>${num(r.estimate, r.unit === "%" ? 1 : 0)}</b> ${r.unit === "%" ? "%" : (r.unit || "")}</td>
-      <td class="ci">[${num(r.ci_low, r.unit === "%" ? 1 : 0)} ; ${num(r.ci_high, r.unit === "%" ? 1 : 0)}]</td>
-      <td class="num">${num(r.se, 2)}</td>
-    </tr>`).join("");
+  el("est").innerHTML = rows.map((r) => {
+    const pct100 = r.unit === "%";
+    const dec = pct100 ? 1 : 0;
+    // Deux natures de grandeur, deux échelles, et ce n'est pas un détail.
+    // Une proportion se lit sur 0 à 100 : la position dans cet intervalle a un
+    // sens. Un prix, non. Le faire partir de zéro écrase l'intervalle contre le
+    // bord droit et le rend invisible, ce qui laisse croire à une précision
+    // qu'on n'a pas. L'axe d'un prix est donc local, et ses bornes sont
+    // écrites en dessous pour que personne ne le confonde avec un axe zéro.
+    const marge = Math.max(1e-9, r.ci_high - r.ci_low);
+    const bas = pct100 ? 0 : r.ci_low - marge;
+    const haut = pct100 ? 100 : r.ci_high + marge;
+    const x = (v) => Math.max(0, Math.min(100, ((v - bas) / (haut - bas)) * 100));
+    const a = x(r.ci_low), b = x(r.ci_high), m = x(r.estimate);
+    const large = (r.ci_high - r.ci_low) / (r.estimate || 1) > 0.35;
+    return `<article class="estim">
+      <div class="e-tete">
+        <h3>${r.label}</h3>
+        <span class="e-n">${num(r.n)} réponses</span>
+      </div>
+      <div class="e-val">
+        <b>${num(r.estimate, dec)}</b><span class="u">${pct100 ? "%" : (r.unit || "")}</span>
+      </div>
+      <div class="e-axe">
+        <span class="e-piste"></span>
+        <span class="e-ic" style="left:${a}%;right:${100 - b}%"></span>
+        <span class="e-pt" style="left:${m}%"></span>
+      </div>
+      <div class="e-bornes">
+        <span>${num(r.ci_low, dec)}</span>
+        <span class="e-mid">intervalle à 95 %${large ? ", encore large" : ""}${
+          pct100 ? "" : ", axe local"}</span>
+        <span>${num(r.ci_high, dec)}</span>
+      </div>
+    </article>`;
+  }).join("");
   el("est-empty").style.display = rows.length ? "none" : "";
 
   el("disclosure").innerHTML = (d.disclosure || [])
@@ -166,21 +204,29 @@ async function load() {
     .map(([k, v]) => `<tr><td>${FIELD_LABELS[k] || k}</td><td class="num">${num(v)}</td></tr>`)
     .join("");
 
-  // audit
+  // L'auto-audit sortait en trois cartes identiques, comme tout le reste de
+  // la page. Il passe en registre plat : la séparation se fait par l'espace,
+  // pas par un cadre. C'est le registre du site, et c'est le ton juste pour
+  // des chiffres dont deux sont mauvais.
   const flagged = q.flagged_share ?? 0;
-  el("quality-tiles").innerHTML = [
-    tile("Score de qualité moyen", num(q.quality_score_mean, 1) + " / 100",
-         `médiane ${num(q.quality_score_median, 1)}`),
-    tile("Signalés pour revérification",
-         `<span class="${flagged > 0.15 ? "pill bad" : "pill ok"}">${pct(flagged)}</span>`,
-         `${num(q.flagged_for_review)} entretien(s) sur ${num(q.interviews_audited)}`),
-    tile("Accord de codage",
-         q.coding_agreement && q.coding_agreement.agreement != null
-           ? pct(q.coding_agreement.agreement) : "non publiable",
-         q.coding_agreement && q.coding_agreement.agreement != null
-           ? `kappa ${num(q.coding_agreement.kappa, 2)} sur ${num(q.coding_agreement.n)} items recodés`
-           : "aucun sous-échantillon recodé à la main"),
-  ].join("");
+  const accord = q.coding_agreement && q.coding_agreement.agreement != null;
+  const lignes = [
+    ["Score de qualité moyen", num(q.quality_score_mean, 1),
+     " / 100", `médiane ${num(q.quality_score_median, 1)}`, false],
+    ["Signalés pour revérification", pct(flagged), "",
+     `${num(q.flagged_for_review)} entretien${q.flagged_for_review > 1 ? "s" : ""} sur ${num(q.interviews_audited)} audités`,
+     flagged > 0.15],
+    ["Accord de codage", accord ? pct(q.coding_agreement.agreement) : "non publiable", "",
+     accord ? `kappa ${num(q.coding_agreement.kappa, 2)} sur ${num(q.coding_agreement.n)} items recodés`
+            : "aucun sous-échantillon n'a encore été recodé à la main", !accord],
+  ];
+  const qt = el("quality-tiles");
+  qt.className = "registre";
+  qt.innerHTML = lignes.map(([lab, val, unite, sous, alerte]) => `<div class="reg-l">
+      <span class="reg-k">${lab}</span>
+      <span class="reg-v ${alerte ? "reg-alerte" : ""}">${val}<i>${unite}</i></span>
+      <span class="reg-s">${sous}</span>
+    </div>`).join("");
 
   el("flags").querySelector("tbody").innerHTML =
     Object.entries(q.flag_counts || {})
