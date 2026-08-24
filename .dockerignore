@@ -6,5 +6,8 @@ data/ndara.db
 data/ndara.db-shm
 data/ndara.db-wal
 data/corpus/
-data/audio/
 review/
+
+# data/audio/ n'est PAS exclu : les libellés pré-synthétisés sont la voix du
+# produit. Les exclure ici fait démarrer une image muette, qui retombe sur la
+# synthèse du navigateur sans que rien ne signale la dégradation.

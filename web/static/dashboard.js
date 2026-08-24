@@ -8,6 +8,25 @@ const pct = (x) => (x == null ? "—" : (x * 100).toFixed(1) + " %");
 const num = (x, d = 0) => (x == null ? "—" : Number(x).toLocaleString("fr-FR",
   { minimumFractionDigits: d, maximumFractionDigits: d }));
 
+/* Une langue muette est une panne, pas un détail : elle doit se voir. */
+function voixCaps(voix) {
+  if (!voix) return [];
+  const out = [];
+  Object.entries(voix).forEach(([qid, v]) => {
+    Object.entries(v.presents || {}).forEach(([lang, n]) => {
+      const attendu = (v.attendu_par_langue || {})[lang] ?? v.attendu;
+      if (n >= attendu) {
+        out.push(`<span class="cap live">voix ${qid}/${lang} : ${n} libellés pré-synthétisés</span>`);
+      } else if (n === 0) {
+        out.push(`<span class="cap off">voix ${qid}/${lang} : aucun fichier, repli sur la voix du navigateur</span>`);
+      } else {
+        out.push(`<span class="cap draft">voix ${qid}/${lang} : ${n} sur ${attendu} seulement</span>`);
+      }
+    });
+  });
+  return out;
+}
+
 function tile(label, value, sub) {
   return `<div class="stat">
     <div class="label">${label}</div>
@@ -74,6 +93,7 @@ async function load() {
     ...brouillons.map(
       (q) => `<span class="cap draft">${q.id} : brouillon ${q.version}, non validé par un locuteur natif</span>`
     ),
+    ...voixCaps(caps.voix),
   ].join("");
 
   const fw = d.fieldwork || { counts: {} };

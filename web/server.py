@@ -246,6 +246,7 @@ class App:
             "asr_live": not isinstance(self.asr, MockASR),
             "coder": self.coder.name,
             "telephony": os.environ.get("TWILIO_ACCOUNT_SID") is not None,
+            "voix": self.voice_inventory(),
             "questionnaires": [
                 {"id": qid, "languages": q.languages, "country": q.country,
                  "version": q.version, "steps": len(q.steps),
@@ -253,6 +254,31 @@ class App:
                 for qid, q in self.questionnaires.items()
             ],
         }
+
+    def voice_inventory(self) -> dict:
+        """Combien de libellés parlent, par questionnaire et par langue.
+
+        Une image livrée sans ses fichiers audio retombe sur la synthèse du
+        navigateur, en silence, et la démonstration perd sa voix sans que
+        personne le voie. Ce compte rend la panne visible à l'écran, ce qui
+        est la seule façon de ne pas la découvrir devant un jury.
+        """
+        inv: dict[str, dict] = {}
+        for qid, q in self.questionnaires.items():
+            par_langue, attendus = {}, {}
+            for lang in q.languages:
+                # Les libellés à gabarit, comme le code de retrait, changent à
+                # chaque entretien : ils ne sont jamais pré-synthétisés et ne
+                # doivent donc pas manquer au compte.
+                attendus[lang] = sum(
+                    1 for k in q.prompt_keys()
+                    if q.prompt(k, lang) and "{" not in q.prompt(k, lang)
+                ) + len(q.steps)
+                d = AUDIO_ROOT / qid / lang
+                par_langue[lang] = len(list(d.glob("*.mp3"))) if d.is_dir() else 0
+            inv[qid] = {"attendu": max(attendus.values()) if attendus else 0,
+                        "attendu_par_langue": attendus, "presents": par_langue}
+        return inv
 
 
 APP: App | None = None
