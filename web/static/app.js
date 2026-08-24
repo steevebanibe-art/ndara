@@ -16,9 +16,12 @@ const state = {
   askedAt: null,
   caps: null,
   recorder: null,
+  recog: null,
   chunks: [],
   micReady: null,
   history: [],
+  handsFree: true,   // NDARA écoute dès qu'il a fini de parler
+  silences: 0,       // silences consécutifs sur l'étape en cours
 };
 
 // ---------------------------------------------------------------- capacités
@@ -66,24 +69,56 @@ function fillLanguages() {
 
 // ---------------------------------------------------------------- restitution
 
-function speak(prompt) {
+function speak(prompt, onEnd) {
+  // onEnd est appelé quand NDARA a fini de parler, quel que soit le chemin
+  // emprunté, y compris en cas d'échec : les mains libres ne doivent jamais
+  // rester bloquées à attendre une fin qui ne vient pas.
+  let rendu = false;
+  const fini = () => { if (!rendu) { rendu = true; if (onEnd) onEnd(); } };
+
   const say = () => {
-    if (!("speechSynthesis" in window)) return;
+    if (!("speechSynthesis" in window)) return fini();
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(prompt.text + (prompt.note ? " " + prompt.note : ""));
     u.lang = { fr: "fr-FR", en: "en-US", km: "km-KH" }[state.language] || "fr-FR";
     u.rate = 0.95;
+    u.onend = fini;
+    u.onerror = fini;
     window.speechSynthesis.speak(u);
+    // Certaines synthèses de navigateur n'émettent jamais onend. Filet de
+    // sécurité proportionnel à la longueur du texte.
+    setTimeout(fini, 2000 + prompt.text.length * 90);
   };
+
   if (prompt.audio_url) {
     // Audio pré-synthétisé : stimulus identique pour tous les répondants.
     const a = new Audio(prompt.audio_url);
+    a.onended = fini;
     a.onerror = say;
     a.play().catch(say);
     state.lastAudio = a;
   } else {
     say();
   }
+}
+
+/* Mains libres : NDARA écoute dès qu'il a fini de parler, comme au téléphone.
+ * Personne n'appuie sur rien. Le repli sur les touches reste entier, et
+ * l'écoute s'arrête d'elle-même après deux silences pour ne pas enfermer
+ * quelqu'un dans une boucle. */
+function mainsLibres() {
+  return !!(state.handsFree && RECOG);
+}
+
+function ecouterSiPossible(prompt) {
+  if (!mainsLibres()) return;
+  if (!prompt || prompt.done || !prompt.allow_voice) return;
+  if (state.silences >= 2) {
+    $("mic-hint").textContent =
+      "Je n'ai rien entendu. Utilisez les touches, ou appuyez sur le micro pour reprendre.";
+    return;
+  }
+  startRecognition();
 }
 
 const KIND_LABEL = {
@@ -94,6 +129,10 @@ const KIND_LABEL = {
 };
 
 function render(prompt) {
+  // Nouvelle question : le compteur de silences repart de zéro. Il ne compte
+  // que les silences sur UNE étape, sinon un répondant lent finirait muet
+  // pour tout le reste de l'entretien.
+  if (!state.step || state.step.step_id !== prompt.step_id) state.silences = 0;
   state.step = prompt;
   state.askedAt = performance.now();
   $("screen-home").style.display = "none";
@@ -116,7 +155,8 @@ function render(prompt) {
   $("btn-replay").style.display = prompt.done ? "none" : "";
   $("mic-hint").textContent = prompt.allow_voice ? micHint() : "";
 
-  speak(prompt);
+  $("hf-wrap").style.display = RECOG ? "" : "none";
+  speak(prompt, () => ecouterSiPossible(prompt));
   drawHood();
 }
 
@@ -125,9 +165,13 @@ function micHint() {
     return "Micro branché sur la transcription du serveur (" + state.caps.asr + ").";
   }
   if (RECOG) {
-    return "Reconnaissance vocale du navigateur. Vraie transcription, pas une "
-         + "simulation, mais votre voix part chez l'éditeur du navigateur : "
-         + "bon pour cette démonstration, jamais pour une collecte réelle.";
+    return (state.handsFree
+        ? "Mains libres : répondez à voix haute dès que j'ai fini de parler, sans rien toucher. "
+        : "Appuyez sur le micro pour répondre à la voix. ")
+      + "Répondez comme vous voulez, en une phrase entière si c'est plus naturel : "
+      + "la réponse est cherchée dedans. Reconnaissance du navigateur, vraie "
+      + "transcription et pas une simulation, mais votre voix part chez l'éditeur "
+      + "du navigateur : bon pour cette démonstration, jamais pour une collecte réelle.";
   }
   return "Ce navigateur n'a pas de reconnaissance vocale et aucun moteur n'est "
        + "branché sur le serveur : le micro enregistre, mais la réponse doit "
@@ -320,11 +364,13 @@ function startRecognition() {
       ? "Vous dites : « " + (final + interim).trim() + " »"
       : "J'écoute.";
   };
+  let muet = false;
   r.onerror = (e) => {
+    muet = e.error === "no-speech";
     btn.classList.remove("rec");
     micLabel("Répondre à la voix");
-    $("mic-hint").textContent = e.error === "no-speech"
-      ? "Je n'ai rien entendu. Reprenez, ou utilisez les touches."
+    $("mic-hint").textContent = muet
+      ? "Je n'ai rien entendu."
       : "La reconnaissance a échoué (" + e.error + "). Utilisez les touches.";
   };
   r.onend = () => {
@@ -332,7 +378,17 @@ function startRecognition() {
     micLabel("Répondre à la voix");
     state.recog = null;
     const dit = final.trim();
-    if (!dit) return;
+    if (!dit) {
+      // Silence. En mains libres, c'est un tour sans réponse : le moteur
+      // relance avec son libellé fixe, puis bascule sur les touches. C'est
+      // exactement ce que fait un vrai appel.
+      if (mainsLibres() && muet && state.step && state.step.allow_voice) {
+        state.silences += 1;
+        submit({ text: "", asr: "navigateur", asr_confidence: 0 });
+      }
+      return;
+    }
+    state.silences = 0;
     // Une confiance est toujours transmise : c'est elle qui fait enregistrer
     // le tour comme une réponse parlée et non comme une saisie au clavier.
     submit({ text: dit, asr: "navigateur", asr_confidence: conf == null ? 0.5 : conf });
@@ -399,6 +455,12 @@ async function withdraw() {
 
 $("btn-start").onclick = start;
 $("btn-mic").onclick = toggleMic;
-$("btn-replay").onclick = () => state.step && speak(state.step);
+$("btn-replay").onclick = () => state.step && speak(state.step, () => ecouterSiPossible(state.step));
 $("btn-withdraw").onclick = withdraw;
+$("hf").onchange = (e) => {
+  state.handsFree = e.target.checked;
+  state.silences = 0;
+  if (!state.handsFree && state.recog) state.recog.abort();
+  $("mic-hint").textContent = state.step && state.step.allow_voice ? micHint() : "";
+};
 loadCaps();

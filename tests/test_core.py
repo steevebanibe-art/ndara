@@ -88,6 +88,69 @@ class TestCoding(unittest.TestCase):
         self.assertIn("hors_plage_plausible", res.flags)
 
 
+class TestCodingPhraseSpontanee(unittest.TestCase):
+    """La réponse est souvent noyée dans une phrase. Elle doit être trouvée,
+    et surtout elle ne doit jamais être inventée."""
+
+    def setUp(self):
+        self.q = Questionnaire.load(QPATH)
+        self.c = RulesCoder()
+
+    def code(self, step_id, phrase):
+        return self.c.code_answer(self.q.step(step_id), phrase, "fr")
+
+    def test_un_nombre_de_passage_n_est_pas_une_touche(self):
+        """Le piège qui produisait un faux codage silencieux.
+
+        « on est cinq » contenait un cinq que l'ancien code lisait comme la
+        modalité numéro cinq. Un nombre ne vaut comme touche que s'il est
+        annoncé, ou s'il est à peu près tout ce que la personne a dit.
+        """
+        res = self.code("region", "bon moi j'habite dans le Littoral, on est cinq à la maison")
+        self.assertEqual(res.code, "LITTORAL")
+
+    def test_le_libelle_le_plus_long_gagne(self):
+        """« Est » la région s'écrit comme « est » le verbe, « même » est un
+        synonyme de « stable ». Sans cette règle, le hasard de l'ordre tranche."""
+        self.assertEqual(self.code("price_direction", "ça a un peu baissé quand même").code,
+                         "baisse")
+        self.assertEqual(self.code("region", "je suis dans l'Est").code, "EST")
+
+    def test_touche_dite_a_voix_haute(self):
+        self.assertEqual(self.code("region", "numéro trois").code, "EST")
+        self.assertEqual(self.code("region", "trois").code, "EST")
+
+    def test_negation_sans_le_mot_non(self):
+        res = self.code("bought_rice", "je n'ai rien acheté du tout")
+        self.assertEqual(res.code, "no")
+        self.assertIn("deduit_de_la_negation", res.flags)
+
+    def test_pas_mal_n_est_pas_une_negation(self):
+        self.assertEqual(self.code("bought_rice", "pas mal de riz oui").code, "yes")
+
+    def test_le_bon_nombre_parmi_plusieurs(self):
+        """Les bornes de la question tranchent entre les nombres de la phrase."""
+        res = self.code("hh_size", "nous sommes cinq et j'ai payé mille cinq cents francs")
+        self.assertEqual(res.value_num, 5)
+        self.assertIn("nombre_choisi_par_plage_plausible", res.flags)
+
+    def test_valeur_rangee_dans_sa_tranche(self):
+        res = self.code("age_group", "j'ai trente-deux ans")
+        self.assertEqual(res.code, "25_34")
+        self.assertIn("valeur_rangee_en_tranche", res.flags)
+
+    def test_tranche_ouverte_vers_le_haut(self):
+        self.assertEqual(self.code("age_group", "j'ai soixante-dix ans").code, "65_PLUS")
+
+    def test_ville_pour_region(self):
+        self.assertEqual(self.code("region", "je vis à Yaoundé depuis dix ans").code, "CENTRE")
+
+    def test_hors_sujet_reste_incompris(self):
+        """Ce qui n'est pas une réponse doit relancer, jamais être rangé quelque part."""
+        self.assertEqual(self.code("region", "vous êtes qui exactement").code, CODE_UNCLEAR)
+        self.assertEqual(self.code("hh_size", "je suis au marché là").code, CODE_UNCLEAR)
+
+
 class TestDoubleConsent(unittest.TestCase):
     """Le point le plus sensible du dossier : il doit être vérifié par un test."""
 
