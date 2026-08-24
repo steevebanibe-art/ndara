@@ -205,20 +205,29 @@ Dit ici plutôt que découvert par un évaluateur :
 
 ## Coût réel d'un entretien complété (2 min 30)
 
+Tarif voix relevé sur la page tarifaire publique de Twilio pour un mobile camerounais,
+le 24 août 2026 : **0,7873 $ la minute**.
+
 | | Twilio, Cameroun | Partenariat opérateur |
 |---|---|---|
-| Minutes voix | ~1,38 $ | ~0,15 $ |
+| Minutes voix (2 min 30) | **1,97 $** | ~0,38 $ *(hypothèse)* |
 | Transcription | ~0,03 $ | ~0,03 $ |
 | Codage | ~0,01 $ | ~0,01 $ |
-| Synthèse vocale | ~0 $ *(pré-synthétisée)* | ~0 $ |
+| Synthèse vocale | 0 $ *(pré-synthétisée)* | 0 $ |
 | Incitation au répondant | ~0,35 $ | ~0,35 $ |
-| **Total** | **≈ 1,80 $** | **≈ 0,55 $** |
+| Quote-part des appels qui n'aboutissent pas | ~0,60 $ | ~0,12 $ |
+| **Coût par entretien complété** | **≈ 3,00 $** | **≈ 0,90 $** |
+
+La dernière ligne avant le total est celle que personne ne publie : un répondeur qui
+décroche est facturé, un refus qui décroche aussi. Avec un taux d'aboutissement autour
+de 20 %, chaque entretien complété porte la facture de ceux qui ont échoué.
 
 Points de comparaison : **20 à 60 $** en face-à-face, **5 à 15 $** en centre d'appels
-humain. Le partenariat opérateur divise le coût par plus de trois — ce n'est pas un
-logo sur une diapositive, c'est la viabilité du modèle. Et un identifiant d'appelant
-local n'est pas un confort : c'est une variable de la qualité statistique, parce qu'un
-numéro étranger fait chuter le taux de décrochage.
+humain. Le tarif opérateur reste une hypothèse tant qu'aucun accord n'est signé, et
+c'est lui qui décide de la viabilité : sans accord de minutes, une vague mensuelle de
+3 000 ménages coûte plus qu'elle ne rapporte. Un identifiant d'appelant local n'est pas
+un confort non plus : c'est une variable de la qualité statistique, parce qu'un numéro
+étranger fait chuter le taux de décrochage.
 
 ---
 

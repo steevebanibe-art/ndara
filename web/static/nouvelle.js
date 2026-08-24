@@ -34,8 +34,8 @@ function rapport(res, deposee) {
       <table class="data">
         <thead><tr><th>Ligne</th><th>Colonne</th><th>Ce qui ne va pas</th><th>Ce qu'il faut faire</th></tr></thead>
         <tbody>${pbs.map((p) => `<tr>
-          <td class="num">${p.ligne == null ? "—" : p.ligne}</td>
-          <td class="mono">${p.colonne || "—"}</td>
+          <td class="num">${p.ligne == null ? "-" : p.ligne}</td>
+          <td class="mono">${p.colonne || "-"}</td>
           <td>${p.message}</td>
           <td class="hint" style="margin:0">${p.correction}</td>
         </tr>`).join("")}</tbody>

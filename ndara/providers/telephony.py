@@ -5,11 +5,16 @@ une évaluation en ligne, donc le canal du jury est le navigateur. La
 téléphonie sert (a) aux entretiens réels qui produisent le petit chiffre vrai,
 (b) à la vidéo de preuve.
 
-⚠️ Ordre de grandeur vérifié : un appel sortant vers un mobile camerounais
-coûte environ 0,55 $/minute chez Twilio. Un entretien de 2 min 30 revient donc
-à ~1,38 $ de minutes. Un partenariat opérateur (minutes on-net) divise ce
-poste par près de dix — c'est l'argument économique du partenariat, pas un
-logo sur une diapositive.
+⚠️ Tarif relevé sur la page tarifaire publique de Twilio le 24 août 2026 :
+**0,7873 $ la minute** vers un mobile camerounais. Un entretien de 2 min 30
+revient donc à 1,97 $ de minutes, et environ 3 $ par entretien complété une
+fois répartie la facture des appels qui n'aboutissent pas. Un répondeur qui
+décroche est facturé, un refus qui décroche aussi.
+
+Un partenariat opérateur (minutes on-net) diviserait ce poste par cinq, et
+c'est ce qui fait passer une vague mensuelle du déficit à la marge. Tant
+qu'aucun accord n'est signé, ce chiffre reste une hypothèse et doit être
+présenté comme telle.
 
 Deuxième raison, non financière : un identifiant d'appelant **étranger** fait
 chuter le taux de décrochage. Le numéro local n'est pas un détail de confort,

@@ -1,18 +1,31 @@
+/* Le site vitrine et l'application étaient deux produits différents à l'œil :
+   ambre d'un côté, vermillon de l'autre, deux typographies sans rapport. Un
+   évaluateur qui passe de la page à la démonstration doit rester chez la même
+   chose. Les jetons ci-dessous sont ceux du site, transposés sous la surface
+   de l'eau, là où la caméra s'arrête à la fin du plan.
+
+   La couleur dit quelque chose de précis, et ce n'est pas une préférence.
+   Le fond est un pétrole froid : c'est la profondeur, la distance, ce qui
+   n'est pas encore mesuré. Le vermillon est le seul élément chaud de tout le
+   produit, et il ne sert qu'à une chose, la mesure : la ligne, le bouton, le
+   focus. Un rouge qui ne sert qu'à ça se lit comme un repère d'instrument, et
+   jamais comme une alarme. */
 :root {
-  --bg: #0e1116;
-  --panel: #161b22;
-  --panel-2: #1c2330;
-  --line: #2a3140;
-  --ink: #e8edf5;
-  --ink-dim: #9aa7b8;
-  --ink-faint: #6b7889;
-  --accent: #d9a441;
-  --accent-ink: #1a1205;
-  --ok: #4caf7d;
-  --warn: #e0a458;
-  --bad: #d96a6a;
+  --bg: #0C181D;
+  --panel: #122127;
+  --panel-2: #182E36;
+  --line: #223A42;
+  --ink: #EDF2F2;
+  --ink-dim: #9FB3B7;
+  --ink-faint: #6E868C;
+  --accent: #D53A1B;
+  --accent-ink: #F0F3F2;
+  --ok: #4FA57C;
+  --warn: #D9A441;
+  --bad: #E0705F;
   --radius: 10px;
-  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --display: "Archivo", system-ui, sans-serif;
+  --mono: "Martian Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
 * { box-sizing: border-box; }
@@ -21,10 +34,16 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
+
+/* Archivo pour les titres et les grands nombres : elle a été dessinée pour la
+   signalétique, la lecture à distance et les relevés d'appareil. C'est la
+   lettre d'un instrument, pas celle d'une marque. */
+h1, h2, h3, .stat .value, .band .l { font-family: var(--display); letter-spacing: -.015em; }
+.stat .value { font-weight: 650; font-variation-settings: "wdth" 105; }
 
 a { color: var(--accent); }
 

@@ -4,8 +4,8 @@
  */
 
 const el = (id) => document.getElementById(id);
-const pct = (x) => (x == null ? "—" : (x * 100).toFixed(1) + " %");
-const num = (x, d = 0) => (x == null ? "—" : Number(x).toLocaleString("fr-FR",
+const pct = (x) => (x == null ? "-" : (x * 100).toFixed(1) + " %");
+const num = (x, d = 0) => (x == null ? "-" : Number(x).toLocaleString("fr-FR",
   { minimumFractionDigits: d, maximumFractionDigits: d }));
 
 /* Une langue muette est une panne, pas un détail : elle doit se voir. */
@@ -140,7 +140,7 @@ async function load() {
     tile("Entretiens exploitables", num(d.n),
          `${num(fw.counts.complete)} complets · ${num(fw.counts.partial)} partiels`),
     tile("Taux de réponse (RR3)", pct(fw.response_rate_rr3),
-         `RR2 : ${pct(fw.response_rate_rr2)} — méthode AAPOR`),
+         `RR2 : ${pct(fw.response_rate_rr2)}, méthode AAPOR`),
     tile("Taux de coopération", pct(fw.cooperation_rate),
          "parmi les personnes effectivement jointes"),
     tile("Effectif effectif", num(w.effective_n, 0),
@@ -193,7 +193,7 @@ async function load() {
       <td class="num">${pct(i.item_nonresponse_rate)}</td>
       <td class="num">${num(i.mean_relances, 2)}</td>
       <td class="num">${pct(i.dtmf_fallback_rate)}</td>
-      <td class="num">${i.mean_duration_s == null ? "—" : num(i.mean_duration_s, 1) + " s"}</td>
+      <td class="num">${i.mean_duration_s == null ? "-" : num(i.mean_duration_s, 1) + " s"}</td>
     </tr>`).join("");
 
   // corpus
@@ -205,9 +205,9 @@ async function load() {
   ].join("");
 
   el("foot").textContent =
-    `Questionnaire ${d.questionnaire ? d.questionnaire.id + " v" + d.questionnaire.version : "—"} · `
+    `Questionnaire ${d.questionnaire ? d.questionnaire.id + " v" + d.questionnaire.version : "-"} · `
     + `calage sur marges ${w.raking && w.raking.converged ? "convergent" : "NON convergent"} `
-    + `(${w.raking ? w.raking.iterations : "—"} itérations) · `
+    + `(${w.raking ? w.raking.iterations : "-"} itérations) · `
     + `${w.trimmed_weights ?? 0} poids écrêtés.`;
 }
 
@@ -267,12 +267,12 @@ function rendreDirect(p) {
     const av = Math.round((l.progression || 0) * 100);
     return `<tr>
       <td class="mono">…${l.id}</td>
-      <td>${ETIQ_CANAL[l.canal] || l.canal || "—"}</td>
-      <td class="mono">${l.strate || "—"}</td>
-      <td>${ETAPES_SYS[l.etape] || l.etape || "—"}</td>
+      <td>${ETIQ_CANAL[l.canal] || l.canal || "-"}</td>
+      <td class="mono">${l.strate || "-"}</td>
+      <td>${ETAPES_SYS[l.etape] || l.etape || "-"}</td>
       <td><div class="mini"><i style="width:${av}%"></i></div><span class="num">${av} %</span></td>
-      <td>${l.methode || "—"}</td>
-      <td class="num">${l.age == null ? "—" : l.age + " s"}</td>
+      <td>${l.methode || "-"}</td>
+      <td class="num">${l.age == null ? "-" : l.age + " s"}</td>
     </tr>`;
   }).join("");
 }
@@ -354,9 +354,9 @@ function evenement(e) {
 
 function brancher() {
   if (flux) flux.close();
-  pouls("wait", "connexion");
+  pouls("wait", "connexion…");
   flux = new EventSource("/api/stream");
-  flux.onopen = () => { fluxDelai = 1000; pouls("on", "en direct"); };
+  flux.onopen = () => { fluxDelai = 1000; pouls("on", "flux ouvert"); };
   flux.onmessage = (m) => { try { evenement(JSON.parse(m.data)); } catch (_) {} };
   flux.onerror = () => {
     pouls("off", "reconnexion");
@@ -388,7 +388,8 @@ el("btn-camp").onclick = async () => {
   if (!confirm(
       `Composer ${n} numéro${n > 1 ? "s" : ""} pour de vrai ?\n\n`
       + `Ce sont de vraies personnes et de l'argent réel : environ `
-      + `${(n * 1.4).toFixed(2)} dollars si tous répondent et vont au bout.`)) return;
+      + `${(n * 2.36).toFixed(0)} dollars si tous répondent et vont au bout, `
+      + `et le double si beaucoup tombent sur un répondeur.`)) return;
   el("btn-camp").disabled = true;
   el("camp-fill").style.width = "0%";
   el("camp-state").textContent = "Tirage de la base de sondage…";

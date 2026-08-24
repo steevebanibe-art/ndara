@@ -1,9 +1,9 @@
-/* NDARA — canal de démonstration navigateur.
+/* NDARA, canal de démonstration navigateur.
  *
  * Le canal réel est le téléphone. Ce fichier ne contient aucune logique
  * d'enquête : les libellés, les filtres, les relances, le codage et la
  * décision de basculer sur le clavier viennent tous du serveur. Le
- * navigateur ne fait que restituer une invite et renvoyer une réponse —
+ * navigateur ne fait que restituer une invite et renvoyer une réponse -
  * exactement comme le fera le canal téléphonique.
  */
 
@@ -39,7 +39,7 @@ async function loadCaps() {
   caps.questionnaires.forEach((q) => {
     const o = document.createElement("option");
     o.value = q.id;
-    o.textContent = `${q.id} — ${q.country}, ${q.steps} questions${q.draft ? " (brouillon)" : ""}`;
+    o.textContent = `${q.id}, ${q.country}, ${q.steps} questions${q.draft ? " (brouillon)" : ""}`;
     qSel.appendChild(o);
   });
   if (demande && caps.questionnaires.some((q) => q.id === demande)) {
@@ -129,7 +129,7 @@ function ecouterSiPossible(prompt) {
 }
 
 const KIND_LABEL = {
-  announce: "Annonce — identification de l'agent",
+  announce: "Annonce, identification de l'agent",
   consent: "Consentement",
   question: "Question",
   end: "Fin de l'entretien",
@@ -263,9 +263,9 @@ function drawHood() {
   tb.innerHTML = state.history
     .map((h) => `<tr>
         <td class="k">${h.step}</td>
-        <td>${h.transcript ? escapeHtml(h.transcript) : "—"}</td>
-        <td>${h.asr == null ? "—" : h.asr.toFixed(2)}</td>
-        <td>${h.code ?? "—"}</td>
+        <td>${h.transcript ? escapeHtml(h.transcript) : "-"}</td>
+        <td>${h.asr == null ? "-" : h.asr.toFixed(2)}</td>
+        <td>${h.code ?? "-"}</td>
         <td>${h.method}</td>
         <td>${h.relances}</td>
       </tr>`)
