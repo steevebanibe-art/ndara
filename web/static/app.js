@@ -114,14 +114,24 @@ function render(prompt) {
   buildInputs(prompt);
   $("btn-mic").style.display = prompt.allow_voice ? "" : "none";
   $("btn-replay").style.display = prompt.done ? "none" : "";
-  $("mic-hint").textContent = prompt.allow_voice
-    ? (state.caps.asr_live
-        ? "Micro branché sur la transcription."
-        : "Aucune transcription n'est branchée : le micro enregistre, mais la réponse doit passer par le clavier ou la saisie. On ne simule jamais une transcription.")
-    : "";
+  $("mic-hint").textContent = prompt.allow_voice ? micHint() : "";
 
   speak(prompt);
   drawHood();
+}
+
+function micHint() {
+  if (state.caps.asr_live) {
+    return "Micro branché sur la transcription du serveur (" + state.caps.asr + ").";
+  }
+  if (RECOG) {
+    return "Reconnaissance vocale du navigateur. Vraie transcription, pas une "
+         + "simulation, mais votre voix part chez l'éditeur du navigateur : "
+         + "bon pour cette démonstration, jamais pour une collecte réelle.";
+  }
+  return "Ce navigateur n'a pas de reconnaissance vocale et aucun moteur n'est "
+       + "branché sur le serveur : le micro enregistre, mais la réponse doit "
+       + "passer par les touches. On ne fabrique jamais une transcription.";
 }
 
 function buildInputs(prompt) {
@@ -232,7 +242,7 @@ async function start() {
   render(p);
 }
 
-async function submit({ text, dtmf, audio_b64, audio_ext }) {
+async function submit({ text, dtmf, audio_b64, audio_ext, asr, asr_confidence }) {
   const prev = state.step;
   const duration = state.askedAt ? Math.round(performance.now() - state.askedAt) : null;
   if (state.lastAudio) { try { state.lastAudio.pause(); } catch (_) {} }
@@ -242,7 +252,7 @@ async function submit({ text, dtmf, audio_b64, audio_ext }) {
     interview_id: state.interviewId,
     questionnaire: state.questionnaire,
     language: state.language,
-    text, dtmf, audio_b64, audio_ext,
+    text, dtmf, audio_b64, audio_ext, asr, asr_confidence,
     duration_ms: duration,
   });
 
@@ -252,7 +262,7 @@ async function submit({ text, dtmf, audio_b64, audio_ext }) {
       transcript: p.transcript || text || null,
       asr: p.asr_confidence,
       code: dtmf ? `touche ${dtmf}` : (p.step_id === prev.step_id ? "non compris" : "codé"),
-      method: dtmf ? "clavier" : (audio_b64 ? "voix" : "saisie"),
+      method: dtmf ? "clavier" : ((audio_b64 || asr) ? "voix" : "saisie"),
       relances: p.step_id === prev.step_id ? "+1" : 0,
     });
   }
@@ -269,13 +279,70 @@ async function postJSON(url, body) {
 }
 
 // ---------------------------------------------------------------- micro
+//
+// Deux chemins, et l'écran dit toujours lequel tourne.
+//
+// 1. Le navigateur embarque un moteur de reconnaissance. On l'utilise : c'est
+//    une transcription réelle par un moteur réel, pas une simulation. Elle ne
+//    sert qu'à la démonstration, jamais à une collecte réelle, parce que la
+//    parole part alors chez l'éditeur du navigateur : c'est écrit à l'écran.
+// 2. Sinon, le micro enregistre et la transcription revient au serveur, qui
+//    la refuse tant qu'aucun moteur n'est branché. Le repli est le clavier.
+//
+// Dans les deux cas la règle tient : on ne fabrique jamais une transcription.
 
-async function toggleMic() {
+const RECOG = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+const LOCALE = { fr: "fr-FR", en: "en-US", km: "km-KH" };
+
+function micLabel(t) { $("mic-label").textContent = t; }
+
+function startRecognition() {
   const btn = $("btn-mic");
-  if (state.recorder && state.recorder.state === "recording") {
-    state.recorder.stop();
-    return;
-  }
+  const r = new RECOG();
+  r.lang = LOCALE[state.language] || "fr-FR";
+  r.interimResults = true;
+  r.continuous = false;
+  r.maxAlternatives = 1;
+
+  let final = "";
+  let conf = null;
+  state.recog = r;
+
+  r.onstart = () => { btn.classList.add("rec"); micLabel("J'écoute, parlez"); };
+  r.onresult = (e) => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const res = e.results[i];
+      if (res.isFinal) { final += res[0].transcript; conf = res[0].confidence; }
+      else interim += res[0].transcript;
+    }
+    $("mic-hint").textContent = (final + interim).trim()
+      ? "Vous dites : « " + (final + interim).trim() + " »"
+      : "J'écoute.";
+  };
+  r.onerror = (e) => {
+    btn.classList.remove("rec");
+    micLabel("Répondre à la voix");
+    $("mic-hint").textContent = e.error === "no-speech"
+      ? "Je n'ai rien entendu. Reprenez, ou utilisez les touches."
+      : "La reconnaissance a échoué (" + e.error + "). Utilisez les touches.";
+  };
+  r.onend = () => {
+    btn.classList.remove("rec");
+    micLabel("Répondre à la voix");
+    state.recog = null;
+    const dit = final.trim();
+    if (!dit) return;
+    // Une confiance est toujours transmise : c'est elle qui fait enregistrer
+    // le tour comme une réponse parlée et non comme une saisie au clavier.
+    submit({ text: dit, asr: "navigateur", asr_confidence: conf == null ? 0.5 : conf });
+  };
+
+  try { r.start(); } catch (_) { /* déjà en cours */ }
+}
+
+async function recordForServer() {
+  const btn = $("btn-mic");
   try {
     if (!state.micReady) {
       state.micReady = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -286,18 +353,27 @@ async function toggleMic() {
     rec.ondataavailable = (e) => state.chunks.push(e.data);
     rec.onstop = async () => {
       btn.classList.remove("rec");
-      $("mic-label").textContent = "Répondre à la voix";
+      micLabel("Répondre à la voix");
       const blob = new Blob(state.chunks, { type: "audio/webm" });
-      const b64 = await blobToBase64(blob);
-      submit({ audio_b64: b64, audio_ext: "webm" });
+      submit({ audio_b64: await blobToBase64(blob), audio_ext: "webm" });
     };
     rec.start();
     btn.classList.add("rec");
-    $("mic-label").textContent = "Arrêter et envoyer";
+    micLabel("Arrêter et envoyer");
   } catch (err) {
     $("mic-hint").textContent =
-      "Micro indisponible : " + err.message + " — utilisez le clavier ou la saisie.";
+      "Micro indisponible : " + err.message + ". Utilisez le clavier ou la saisie.";
   }
+}
+
+function toggleMic() {
+  if (state.recog) { state.recog.stop(); return; }
+  if (state.recorder && state.recorder.state === "recording") {
+    state.recorder.stop();
+    return;
+  }
+  if (RECOG) return startRecognition();
+  return recordForServer();
 }
 
 function blobToBase64(blob) {

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NDARA — tableau de bord</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%23122127%27/%3E%3Crect x=%274%27 y=%2715%27 width=%2724%27 height=%272%27 fill=%27%23d53a1b%27/%3E%3Ccircle cx=%278%27 cy=%2722%27 r=%271.6%27 fill=%27%23d6dcdc%27/%3E%3Ccircle cx=%2716%27 cy=%2722%27 r=%271.6%27 fill=%27%23d6dcdc%27/%3E%3Ccircle cx=%2724%27 cy=%2722%27 r=%271.6%27 fill=%27%23d6dcdc%27/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -22,6 +23,57 @@
 
   <div id="provenance"></div>
   <div class="caps" id="caps"></div>
+
+  <h2 class="section">
+    En direct
+    <span class="pouls" id="pouls" title="état du flux">hors ligne</span>
+  </h2>
+  <div class="panel live">
+    <div class="grid" id="live-tiles"></div>
+
+    <div class="live-cols">
+      <div>
+        <h3 class="sub">Entretiens en cours</h3>
+        <table class="data" id="live-rows">
+          <thead><tr><th>Entretien</th><th>Canal</th><th>Strate</th><th>Étape</th>
+                     <th>Avancement</th><th>Méthode</th><th>Depuis</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p class="hint" id="live-empty">
+          Aucun entretien en cours. Ouvrez la démonstration dans un autre onglet,
+          ou lancez une vague ci-dessous : cet écran suivra en temps réel.
+        </p>
+      </div>
+      <div>
+        <h3 class="sub">Fil du terrain</h3>
+        <ul class="feed" id="feed"></ul>
+      </div>
+    </div>
+
+    <div class="wave">
+      <div>
+        <b>Lancer une vague simulée</b>
+        <p class="hint">
+          Une vague nationale prend trois jours au lieu de six mois parce que la
+          capacité d'appel se loue à la minute. Ici elle se remplit sous vos yeux
+          en une minute. Les entretiens produits portent le canal
+          <code>simulation</code> et restent comptés à part, en haut de cette page.
+        </p>
+      </div>
+      <div class="wave-ctl">
+        <label>Numéros tirés
+          <select id="wave-n">
+            <option value="60">60</option>
+            <option value="120" selected>120</option>
+            <option value="240">240</option>
+          </select>
+        </label>
+        <button class="act" id="btn-wave">Lancer la vague</button>
+      </div>
+    </div>
+    <div class="wave-bar"><i id="wave-fill"></i></div>
+    <p class="hint" id="wave-state"></p>
+  </div>
 
   <h2 class="section">Collecte</h2>
   <div class="grid" id="tiles"></div>

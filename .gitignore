@@ -4,4 +4,9 @@ __pycache__/
 data/ndara.db*
 data/corpus/audio/
 data/corpus/export/
-data/audio/
+
+# Les libellés pré-synthétisés SONT versionnés : ce sont eux qui garantissent
+# que tout l'échantillon entend rigoureusement le même stimulus. Un fichier
+# régénéré serait un stimulus différent, donc une rupture de série.
+# En revanche, la parole des répondants ne rentre jamais ici.
+!data/audio/

@@ -243,8 +243,14 @@ class InterviewEngine:
         prior = [t for t in self.store.turns(iv.id) if t.step_id == step.id]
         relances = prior[-1].relances if prior else 0
 
+        # Une transcription reste une transcription, que le moteur tourne sur
+        # le serveur ou dans le navigateur du répondant : dès qu'une confiance
+        # de reconnaissance accompagne le texte, le tour est une réponse parlée
+        # et non une saisie. Le nom du moteur est affiché à l'écran, jamais
+        # deviné, et rien n'est jamais inventé faute de moteur.
         method = AnswerMethod.DTMF.value if dtmf else (
-            AnswerMethod.VOICE.value if audio_bytes else AnswerMethod.TEXT.value)
+            AnswerMethod.VOICE.value if (audio_bytes or asr_confidence is not None)
+            else AnswerMethod.TEXT.value)
 
         # Repli clavier : la modalité est certaine, on ne passe pas par le codeur.
         if dtmf:

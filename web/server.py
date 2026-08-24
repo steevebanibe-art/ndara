@@ -18,7 +18,11 @@ import base64
 import json
 import mimetypes
 import os
+import queue
+import random
 import sys
+import threading
+import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -42,6 +46,51 @@ STATIC = Path(__file__).resolve().parent / "static"
 AUDIO_ROOT = ROOT / "data" / "audio"
 
 
+class Bus:
+    """Diffusion des événements de terrain vers les tableaux de bord ouverts.
+
+    Un entretien qui commence, une réponse qui tombe, un entretien qui se
+    termine : chaque fait est poussé aux écrans connectés au moment où il se
+    produit. C'est la différence entre un tableau de bord qu'on rafraîchit et
+    une salle de contrôle.
+
+    Un abonné lent ne bloque jamais le terrain : sa file déborde, on jette
+    l'événement pour lui seul, et la collecte continue.
+    """
+
+    MAX_ABONNES = 32
+
+    def __init__(self) -> None:
+        self._abonnes: set[queue.Queue] = set()
+        self._verrou = threading.Lock()
+
+    def subscribe(self) -> queue.Queue | None:
+        with self._verrou:
+            if len(self._abonnes) >= self.MAX_ABONNES:
+                return None
+            f: queue.Queue = queue.Queue(maxsize=256)
+            self._abonnes.add(f)
+            return f
+
+    def unsubscribe(self, f: queue.Queue) -> None:
+        with self._verrou:
+            self._abonnes.discard(f)
+
+    def publish(self, evt: dict) -> None:
+        with self._verrou:
+            abonnes = list(self._abonnes)
+        for f in abonnes:
+            try:
+                f.put_nowait(evt)
+            except queue.Full:
+                pass
+
+    @property
+    def count(self) -> int:
+        with self._verrou:
+            return len(self._abonnes)
+
+
 class App:
     """État partagé du serveur."""
 
@@ -61,6 +110,128 @@ class App:
         self.margins = {
             "prix_denrees_cm": load_margins(ROOT / "data" / "margins" / "cm_margins.json"),
         }
+        self.bus = Bus()
+        # Les entretiens en cours, vus du poste de contrôle. Un entretien qui
+        # se termine ou qui reste muet trop longtemps en sort.
+        self.live: dict[str, dict] = {}
+        self._live_lock = threading.Lock()
+        self._wave_running = False
+        self.db_path = ROOT / db
+
+    # ------------------------------------------------------------------
+    # Le terrain, vu en direct
+    # ------------------------------------------------------------------
+
+    def touch(self, iid: str, **champs) -> dict:
+        """Met à jour la ligne d'un entretien en cours et la renvoie."""
+        with self._live_lock:
+            ligne = self.live.setdefault(iid, {"id": iid[-6:], "debut": time.time()})
+            ligne.update(champs)
+            ligne["vu"] = time.time()
+            return dict(ligne)
+
+    def drop(self, iid: str) -> None:
+        with self._live_lock:
+            self.live.pop(iid, None)
+
+    def live_rows(self) -> list[dict]:
+        """Les entretiens en cours, les plus récents d'abord.
+
+        Un entretien sans nouvelle depuis trois minutes est considéré comme
+        abandonné : il quitte l'écran, il ne pollue pas le compteur.
+        """
+        limite = time.time() - 180
+        with self._live_lock:
+            morts = [k for k, v in self.live.items() if v.get("vu", 0) < limite]
+            for k in morts:
+                self.live.pop(k, None)
+            lignes = list(self.live.values())
+        for l in lignes:
+            l["age"] = round(time.time() - l.get("debut", time.time()))
+        return sorted(lignes, key=lambda l: -l.get("vu", 0))[:12]
+
+    def pulse(self) -> dict:
+        """L'état du terrain à cet instant, tel qu'il part vers les écrans."""
+        prov = self.store.provenance()
+        rows = self.live_rows()
+        return {
+            "type": "pulse",
+            "provenance": prov,
+            "total": sum(prov.values()),
+            "en_cours": len(rows),
+            "lignes": rows,
+            "ecrans": self.bus.count,
+            "vague": self._wave_running,
+        }
+
+    # ------------------------------------------------------------------
+    # Une vague simulée, menée sous les yeux du visiteur
+    # ------------------------------------------------------------------
+
+    def start_wave(self, n: int, cadence: float = 0.05) -> bool:
+        """Lance une vague simulée en tâche de fond, entretien par entretien.
+
+        C'est la démonstration de l'élasticité : une vague nationale prend
+        trois jours au lieu de six mois parce que la capacité se loue à la
+        minute. Ici on la regarde se remplir en une minute, et chaque
+        entretien produit porte le canal « simulation », affiché comme tel.
+        """
+        if self._wave_running:
+            return False
+        self._wave_running = True
+        threading.Thread(target=self._run_wave, args=(n, cadence), daemon=True).start()
+        return True
+
+    def _run_wave(self, n: int, cadence: float) -> None:
+        # Import tardif : le script de simulation n'est pas nécessaire au
+        # fonctionnement du serveur, il ne doit pas peser sur son démarrage.
+        sys.path.insert(0, str(ROOT / "scripts"))
+        try:
+            from simulate import OUTCOME_MIX, run_one  # noqa: E402
+            from ndara.coding import RulesCoder  # noqa: E402
+            from ndara.models import Channel, Disposition  # noqa: E402
+            from ndara.sampling import draw_frame, to_sample_units  # noqa: E402
+
+            qid = self.default_qid
+            q = self.questionnaires[qid]
+            # Connexion propre à ce fil : deux fils ne partagent jamais un
+            # curseur SQLite.
+            store = Store(self.db_path)
+            engine = InterviewEngine(store, q, RulesCoder(),
+                                     CorpusWriter(store, ROOT / "data" / "corpus"))
+            graine = random.randrange(1, 10_000_000)
+            rng = random.Random(graine)
+            units = to_sample_units(draw_frame(q.country, n, seed=graine))
+            store.add_sample_units(units)
+            issues = [o for o, _ in OUTCOME_MIX]
+            poids = [w for _, w in OUTCOME_MIX]
+
+            aboutis = tires = 0
+            self.bus.publish({"type": "vague", "etat": "debut", "n": n})
+            for u in units:
+                tires += 1
+                issue = rng.choices(issues, weights=poids, k=1)[0]
+                if issue != Disposition.COMPLETE.value:
+                    store.set_unit_disposition(u.msisdn_hash, issue)
+                    self.bus.publish({"type": "tirage", "issue": issue,
+                                      "tires": tires, "aboutis": aboutis})
+                else:
+                    iid = run_one(engine, q, rng, "fr", u.stratum, "clean")
+                    store.set_unit_disposition(u.msisdn_hash,
+                                               Disposition.COMPLETE.value, iid)
+                    aboutis += 1
+                    self.bus.publish({
+                        "type": "abouti", "id": iid[-6:], "strate": u.stratum,
+                        "canal": Channel.SIMULATION.value,
+                        "tires": tires, "aboutis": aboutis,
+                    })
+                time.sleep(cadence)
+            self.bus.publish({"type": "vague", "etat": "fin",
+                              "tires": tires, "aboutis": aboutis})
+        except Exception as exc:  # la vague échoue seule, le serveur continue
+            self.bus.publish({"type": "vague", "etat": "erreur", "message": str(exc)[:200]})
+        finally:
+            self._wave_running = False
 
     @property
     def default_qid(self) -> str:
@@ -128,6 +299,46 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args) -> None:  # silence
         pass
 
+    # ---------------- flux d'événements ----------------
+
+    def _sse(self, evt: dict) -> None:
+        self.wfile.write(b"data: " + json.dumps(evt, ensure_ascii=False).encode("utf-8")
+                         + b"\n\n")
+        self.wfile.flush()
+
+    def _stream(self) -> None:
+        """Flux d'événements tenu ouvert : le terrain pousse, l'écran suit.
+
+        Un battement toutes les deux secondes sert à la fois de rafraîchissement
+        des compteurs et de signe de vie pour les intermédiaires réseau, qui
+        referment volontiers une connexion silencieuse.
+        """
+        assert APP is not None
+        f = APP.bus.subscribe()
+        if f is None:
+            return self._json({"error": "trop d'écrans connectés"}, 503)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache, no-transform")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("X-Accel-Buffering", "no")   # pas de tampon chez l'intermédiaire
+        self.end_headers()
+        try:
+            self._sse(APP.pulse())
+            dernier = time.time()
+            while True:
+                try:
+                    self._sse(f.get(timeout=1.0))
+                except queue.Empty:
+                    pass
+                if time.time() - dernier >= 2.0:
+                    dernier = time.time()
+                    self._sse(APP.pulse())
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+        finally:
+            APP.bus.unsubscribe(f)
+
     # ---------------- GET ----------------
 
     def do_GET(self) -> None:
@@ -166,6 +377,12 @@ class Handler(BaseHTTPRequestHandler):
                 "telephony": caps["telephony"],
                 "questionnaires": [q["id"] for q in caps["questionnaires"]],
             })
+
+        if route == "/api/pulse":
+            return self._json(APP.pulse())
+
+        if route == "/api/stream":
+            return self._stream()
 
         if route == "/api/capabilities":
             return self._json(APP.capabilities())
@@ -210,7 +427,20 @@ class Handler(BaseHTTPRequestHandler):
             )
             out = prompt.to_dict()
             out["questionnaire"] = qid
+            ligne = APP.touch(prompt.interview_id, langue=body.get("language") or "fr",
+                              canal=body.get("channel") or "web", etape=prompt.step_id,
+                              progression=0.0, methode="—", questionnaire=qid)
+            APP.bus.publish({"type": "entretien", "etat": "debut", "ligne": ligne})
             return self._json(out)
+
+        if route == "/api/wave":
+            body = self._read_json()
+            n = max(10, min(400, int(body.get("n") or 120)))
+            cadence = max(0.01, min(0.5, float(body.get("cadence") or 0.05)))
+            lance = APP.start_wave(n, cadence)
+            return self._json({"lance": lance, "n": n,
+                               "note": "vague simulée, canal « simulation »"},
+                              200 if lance else 409)
 
         if route == "/api/answer":
             body = self._read_json()
@@ -224,6 +454,14 @@ class Handler(BaseHTTPRequestHandler):
                 transcript, asr_conf = APP.asr.transcribe(
                     audio_bytes, body.get("language") or "fr",
                     body.get("audio_ext") or "webm")
+            elif body.get("asr"):
+                # Reconnaissance faite dans le navigateur du répondant. C'est
+                # une vraie transcription par un vrai moteur, pas une
+                # simulation : le nom du moteur est renvoyé et affiché.
+                asr_conf = body.get("asr_confidence")
+                if asr_conf is None:
+                    asr_conf = 0.0
+                asr_conf = max(0.0, min(1.0, float(asr_conf)))
             try:
                 prompt = engine.submit(
                     body["interview_id"],
@@ -240,6 +478,17 @@ class Handler(BaseHTTPRequestHandler):
             out["questionnaire"] = qid
             out["transcript"] = transcript
             out["asr_confidence"] = asr_conf
+            methode = "clavier" if body.get("dtmf") else (
+                "voix" if (body.get("audio_b64") or body.get("asr")) else "saisie")
+            iid = body["interview_id"]
+            if prompt.done:
+                ligne = APP.touch(iid, etape="terminé", progression=1.0, methode=methode)
+                APP.drop(iid)
+                APP.bus.publish({"type": "entretien", "etat": "fin", "ligne": ligne})
+            else:
+                ligne = APP.touch(iid, etape=prompt.step_id, methode=methode,
+                                  progression=round(prompt.progress or 0.0, 3))
+                APP.bus.publish({"type": "entretien", "etat": "tour", "ligne": ligne})
             return self._json(out)
 
         if route == "/api/withdraw":

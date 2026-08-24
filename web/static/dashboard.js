@@ -156,3 +156,143 @@ async function load() {
 
 load();
 setInterval(load, 15000);
+
+/* ------------------------------------------------------------------ direct
+ *
+ * Le terrain pousse ses événements, cet écran les suit. Aucune interrogation
+ * répétée du serveur : une connexion tenue ouverte, un battement toutes les
+ * deux secondes, et une reconnexion automatique si la ligne tombe.
+ */
+
+const ETIQ_CANAL = { simulation: "simulation", web: "navigateur", phone: "téléphone" };
+const ETAPES_SYS = {
+  __announce__: "annonce", __consent_survey__: "consentement enquête",
+  __consent_corpus__: "consentement corpus", __end__: "fin", terminé: "terminé",
+};
+
+let flux = null;
+let fluxDelai = 1000;
+let vagueN = 0;
+let vagueTires = 0;
+
+function pouls(etat, texte) {
+  const p = el("pouls");
+  p.className = "pouls " + etat;
+  p.textContent = texte;
+}
+
+function ligneFeed(texte, classe) {
+  const ul = el("feed");
+  const li = document.createElement("li");
+  li.className = classe || "";
+  const h = new Date().toLocaleTimeString("fr-FR", { hour12: false });
+  li.innerHTML = `<time>${h}</time><span></span>`;
+  li.querySelector("span").textContent = texte;
+  ul.insertBefore(li, ul.firstChild);
+  while (ul.children.length > 40) ul.removeChild(ul.lastChild);
+}
+
+function rendreDirect(p) {
+  const prov = p.provenance || {};
+  el("live-tiles").innerHTML = [
+    tile("Entretiens en cours", num(p.en_cours), "à cette seconde"),
+    tile("Appels téléphoniques", num(prov.phone || 0), "collecte réelle"),
+    tile("Dans un navigateur", num(prov.web || 0), "démonstration"),
+    tile("Simulés", num(prov.simulation || 0), "banc d'essai, canal séparé"),
+    tile("Écrans connectés", num(p.ecrans), "ce tableau de bord"),
+  ].join("");
+
+  const corps = el("live-rows").querySelector("tbody");
+  const lignes = p.lignes || [];
+  el("live-empty").style.display = lignes.length ? "none" : "";
+  el("live-rows").style.display = lignes.length ? "" : "none";
+  corps.innerHTML = lignes.map((l) => {
+    const av = Math.round((l.progression || 0) * 100);
+    return `<tr>
+      <td class="mono">…${l.id}</td>
+      <td>${ETIQ_CANAL[l.canal] || l.canal || "—"}</td>
+      <td class="mono">${l.strate || "—"}</td>
+      <td>${ETAPES_SYS[l.etape] || l.etape || "—"}</td>
+      <td><div class="mini"><i style="width:${av}%"></i></div><span class="num">${av} %</span></td>
+      <td>${l.methode || "—"}</td>
+      <td class="num">${l.age == null ? "—" : l.age + " s"}</td>
+    </tr>`;
+  }).join("");
+}
+
+function evenement(e) {
+  if (e.type === "pulse") { rendreDirect(e); return; }
+
+  if (e.type === "entretien") {
+    const l = e.ligne || {};
+    if (e.etat === "debut") ligneFeed(`Entretien ouvert …${l.id} (${ETIQ_CANAL[l.canal] || l.canal})`, "ok");
+    else if (e.etat === "fin") ligneFeed(`Entretien terminé …${l.id}`, "ok");
+    else ligneFeed(`…${l.id} répond à « ${ETAPES_SYS[l.etape] || l.etape} » par ${l.methode}`);
+    return;
+  }
+
+  if (e.type === "vague") {
+    if (e.etat === "debut") {
+      vagueN = e.n; vagueTires = 0;
+      el("btn-wave").disabled = true;
+      ligneFeed(`Vague simulée lancée : ${e.n} numéros tirés`, "ok");
+    } else if (e.etat === "fin") {
+      el("btn-wave").disabled = false;
+      el("wave-fill").style.width = "100%";
+      el("wave-state").textContent =
+        `Vague terminée : ${e.aboutis} entretiens aboutis sur ${e.tires} numéros tirés, `
+        + `soit un taux d'aboutissement de ${(100 * e.aboutis / e.tires).toFixed(1)} %.`;
+      ligneFeed(`Vague terminée : ${e.aboutis} aboutis sur ${e.tires} tirés`, "ok");
+      load();
+    } else {
+      el("btn-wave").disabled = false;
+      el("wave-state").textContent = "La vague s'est arrêtée : " + (e.message || "erreur");
+      ligneFeed("Vague interrompue", "bad");
+    }
+    return;
+  }
+
+  if (e.type === "abouti" || e.type === "tirage") {
+    vagueTires = e.tires;
+    if (vagueN) {
+      el("wave-fill").style.width = Math.round(100 * vagueTires / vagueN) + "%";
+      el("wave-state").textContent =
+        `${e.tires} numéros tirés sur ${vagueN} · ${e.aboutis} entretiens aboutis`;
+    }
+    if (e.type === "abouti") ligneFeed(`Entretien abouti …${e.id} · strate ${e.strate}`, "ok");
+    return;
+  }
+}
+
+function brancher() {
+  if (flux) flux.close();
+  pouls("wait", "connexion");
+  flux = new EventSource("/api/stream");
+  flux.onopen = () => { fluxDelai = 1000; pouls("on", "en direct"); };
+  flux.onmessage = (m) => { try { evenement(JSON.parse(m.data)); } catch (_) {} };
+  flux.onerror = () => {
+    pouls("off", "reconnexion");
+    flux.close();
+    // Attente qui double à chaque échec, jusqu'à trente secondes : une panne
+    // réseau ne doit pas transformer l'écran en marteau-pilon.
+    setTimeout(brancher, fluxDelai);
+    fluxDelai = Math.min(30000, fluxDelai * 2);
+  };
+}
+
+el("btn-wave").onclick = async () => {
+  const n = Number(el("wave-n").value);
+  el("btn-wave").disabled = true;
+  el("wave-fill").style.width = "0%";
+  el("wave-state").textContent = "Tirage de la base de sondage…";
+  const r = await fetch("/api/wave", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ n, cadence: 0.05 }),
+  }).then((x) => x.json()).catch(() => ({ lance: false }));
+  if (!r.lance) {
+    el("btn-wave").disabled = false;
+    el("wave-state").textContent = "Une vague est déjà en cours.";
+  }
+};
+
+brancher();
