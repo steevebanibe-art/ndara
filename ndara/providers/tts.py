@@ -54,6 +54,25 @@ class AzureTTS:
     def available(self) -> bool:
         return bool(self.key)
 
+    def voices(self) -> list[dict]:
+        """Les voix réellement servies par CETTE région, telles qu'Azure les déclare.
+
+        La documentation liste les voix du service, pas celles d'une région
+        donnée : une voix documentée peut être absente de la région choisie, et
+        la synthèse échoue alors au moment où on croyait avoir fini. Cette
+        méthode existe pour transformer cette découverte tardive en
+        vérification de cinq secondes.
+        """
+        import json as _json
+        import urllib.request
+
+        url = (f"https://{self.region}.tts.speech.microsoft.com"
+               "/cognitiveservices/voices/list")
+        req = urllib.request.Request(
+            url, headers={"Ocp-Apim-Subscription-Key": self.key, "User-Agent": "ndara"})
+        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            return _json.loads(resp.read())
+
     def synthesize(self, text: str, lang: str) -> bytes:
         import urllib.request
         from xml.sax.saxutils import escape

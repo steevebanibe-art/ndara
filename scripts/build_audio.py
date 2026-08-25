@@ -25,7 +25,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from ndara.console import setup as setup_console  # noqa: E402
-from ndara.providers.tts import ElevenLabsTTS, NullTTS, tts_for_language  # noqa: E402
+from ndara.providers.tts import (  # noqa: E402
+    AZURE_VOICES, AzureTTS, ElevenLabsTTS, NullTTS, tts_for_language)
 from ndara.questionnaire import Questionnaire  # noqa: E402
 
 
@@ -54,7 +55,43 @@ def main() -> None:
     ap.add_argument("--force", action="store_true", help="régénérer les fichiers existants")
     ap.add_argument("--voices", action="store_true",
                     help="lister les voix du compte ElevenLabs et s'arrêter")
+    ap.add_argument("--voix-azure", dest="voix_azure", action="store_true",
+                    help="lister les voix qu'Azure sert DANS LA RÉGION configurée, "
+                         "et s'arrêter")
     args = ap.parse_args()
+
+    if args.voix_azure:
+        azure = AzureTTS()
+        if not azure.key:
+            print("AZURE_SPEECH_KEY absente.")
+            return
+        print(f"Région interrogée : {azure.region}")
+        print()
+        try:
+            voix = azure.voices()
+        except Exception as exc:
+            print(f"Azure n'a pas répondu : {exc}")
+            print("Vérifiez la clé, et que la région correspond à celle de la ressource.")
+            return
+        attendues = sorted(set(AZURE_VOICES.values()))
+        par_nom = {v.get("ShortName"): v for v in voix}
+        print(f"{len(voix)} voix servies par cette région.")
+        print()
+        for nom in attendues:
+            v = par_nom.get(nom)
+            etat = "présente" if v else "ABSENTE DE CETTE RÉGION"
+            detail = f" ({v.get('Gender','')}, {v.get('VoiceType','')})" if v else ""
+            print(f"  {nom:<28} {etat}{detail}")
+        manquantes = [n for n in attendues if n not in par_nom]
+        print()
+        if manquantes:
+            print("⚠️  Une voix absente ici peut exister dans une autre région. "
+                  "Changez AZURE_SPEECH_REGION plutôt que de changer de voix : "
+                  "le choix de la voix est une décision de conception, pas un "
+                  "repli technique.")
+        else:
+            print("Toutes les voix configurées sont servies par cette région.")
+        return
 
     if args.voices:
         eleven = ElevenLabsTTS()

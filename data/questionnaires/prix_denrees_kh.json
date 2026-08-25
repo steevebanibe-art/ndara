@@ -3,14 +3,20 @@
   "version": "0.9-draft",
   "country": "KH",
   "currency": "KHR",
-  "languages": ["km", "en"],
+  "languages": [
+    "km",
+    "en"
+  ],
   "consent_version": "1.0",
   "_WARNING_NATIVE_REVIEW": "TRADUCTION KHMÈRE NON VALIDÉE PAR UN LOCUTEUR NATIF. Ne pas utiliser devant le jury, ni en collecte, avant relecture — contact prévu : panharith.in@cadt.edu.kh (CADT). Le pipeline technique est complet ; seul le contenu linguistique est en attente. Version bloquée en 0.9-draft tant que la relecture n'est pas faite.",
   "_note": "Les libellés sont FIXES et pré-synthétisés. Voix Azure disponible : km-KH-SreymomNeural (féminine) / km-KH-PisethNeural (masculine). Reconnaissance khmère : taux d'erreur mot élevé (20 à 50 %) — d'où des modalités courtes et un repli clavier systématique.",
   "incentive": {
     "amount": 2000,
     "currency": "KHR",
-    "label": {"km": "ទឹកប្រាក់ទូរស័ព្ទ ២០០០ រៀល", "en": "2,000 riel of airtime"}
+    "label": {
+      "km": "ទឹកប្រាក់ទូរស័ព្ទ ២០០០ រៀល",
+      "en": "2,000 riel of airtime"
+    }
   },
   "prompts": {
     "announce": {
@@ -49,8 +55,14 @@
       "km": "លេខកូដដកសំឡេងរបស់លោកអ្នកគឺ {code}។ ផ្ញើលេខកូដនេះមកវិញនៅពេលណាក៏បាន ដើម្បីលុបការថតសំឡេង។",
       "en": "Your withdrawal code is {code}. Send this code back at any time to have the recording deleted."
     },
-    "yes_label": {"km": "បាទ/ចាស", "en": "Yes"},
-    "no_label": {"km": "ទេ", "en": "No"}
+    "yes_label": {
+      "km": "បាទ/ចាស",
+      "en": "Yes"
+    },
+    "no_label": {
+      "km": "ទេ",
+      "en": "No"
+    }
   },
   "steps": [
     {
@@ -63,15 +75,114 @@
         "en": "Which province do you live in? Phnom Penh press 1. Banteay Meanchey 2. Battambang 3. Siem Reap 4. Kampong Cham 5. Kandal 6. Prey Veng 7. Takeo 8. Other 9."
       },
       "options": [
-        {"code": "PHNOM_PENH", "dtmf": "1", "labels": {"km": ["ភ្នំពេញ"], "en": ["phnom penh"]}},
-        {"code": "BANTEAY_MEANCHEY", "dtmf": "2", "labels": {"km": ["បន្ទាយមានជ័យ"], "en": ["banteay meanchey"]}},
-        {"code": "BATTAMBANG", "dtmf": "3", "labels": {"km": ["បាត់ដំបង"], "en": ["battambang"]}},
-        {"code": "SIEM_REAP", "dtmf": "4", "labels": {"km": ["សៀមរាប"], "en": ["siem reap"]}},
-        {"code": "KAMPONG_CHAM", "dtmf": "5", "labels": {"km": ["កំពង់ចាម"], "en": ["kampong cham"]}},
-        {"code": "KANDAL", "dtmf": "6", "labels": {"km": ["កណ្ដាល"], "en": ["kandal"]}},
-        {"code": "PREY_VENG", "dtmf": "7", "labels": {"km": ["ព្រៃវែង"], "en": ["prey veng"]}},
-        {"code": "TAKEO", "dtmf": "8", "labels": {"km": ["តាកែវ"], "en": ["takeo"]}},
-        {"code": "AUTRE", "dtmf": "9", "labels": {"km": ["ផ្សេងទៀត"], "en": ["other"]}}
+        {
+          "code": "PHNOM_PENH",
+          "dtmf": "1",
+          "labels": {
+            "km": [
+              "ភ្នំពេញ"
+            ],
+            "en": [
+              "phnom penh"
+            ]
+          }
+        },
+        {
+          "code": "BANTEAY_MEANCHEY",
+          "dtmf": "2",
+          "labels": {
+            "km": [
+              "បន្ទាយមានជ័យ"
+            ],
+            "en": [
+              "banteay meanchey"
+            ]
+          }
+        },
+        {
+          "code": "BATTAMBANG",
+          "dtmf": "3",
+          "labels": {
+            "km": [
+              "បាត់ដំបង"
+            ],
+            "en": [
+              "battambang"
+            ]
+          }
+        },
+        {
+          "code": "SIEM_REAP",
+          "dtmf": "4",
+          "labels": {
+            "km": [
+              "សៀមរាប"
+            ],
+            "en": [
+              "siem reap"
+            ]
+          }
+        },
+        {
+          "code": "KAMPONG_CHAM",
+          "dtmf": "5",
+          "labels": {
+            "km": [
+              "កំពង់ចាម"
+            ],
+            "en": [
+              "kampong cham"
+            ]
+          }
+        },
+        {
+          "code": "KANDAL",
+          "dtmf": "6",
+          "labels": {
+            "km": [
+              "កណ្ដាល"
+            ],
+            "en": [
+              "kandal"
+            ]
+          }
+        },
+        {
+          "code": "PREY_VENG",
+          "dtmf": "7",
+          "labels": {
+            "km": [
+              "ព្រៃវែង"
+            ],
+            "en": [
+              "prey veng"
+            ]
+          }
+        },
+        {
+          "code": "TAKEO",
+          "dtmf": "8",
+          "labels": {
+            "km": [
+              "តាកែវ"
+            ],
+            "en": [
+              "takeo"
+            ]
+          }
+        },
+        {
+          "code": "AUTRE",
+          "dtmf": "9",
+          "labels": {
+            "km": [
+              "ផ្សេងទៀត"
+            ],
+            "en": [
+              "other"
+            ]
+          }
+        }
       ]
     },
     {
@@ -84,8 +195,33 @@
         "en": "Are you a woman or a man? Woman press 1. Man press 2."
       },
       "options": [
-        {"code": "F", "dtmf": "1", "labels": {"km": ["ស្ត្រី", "នារី"], "en": ["woman", "female"]}},
-        {"code": "M", "dtmf": "2", "labels": {"km": ["បុរស"], "en": ["man", "male"]}}
+        {
+          "code": "F",
+          "dtmf": "1",
+          "labels": {
+            "km": [
+              "ស្ត្រី",
+              "នារី"
+            ],
+            "en": [
+              "woman",
+              "female"
+            ]
+          }
+        },
+        {
+          "code": "M",
+          "dtmf": "2",
+          "labels": {
+            "km": [
+              "បុរស"
+            ],
+            "en": [
+              "man",
+              "male"
+            ]
+          }
+        }
       ]
     },
     {
@@ -98,11 +234,66 @@
         "en": "How old are you? 18 to 24 press 1. 25 to 34 press 2. 35 to 49 press 3. 50 to 64 press 4. 65 or older press 5."
       },
       "options": [
-        {"code": "18_24", "dtmf": "1", "labels": {"km": ["១៨"], "en": ["18 24"]}},
-        {"code": "25_34", "dtmf": "2", "labels": {"km": ["២៥"], "en": ["25 34"]}},
-        {"code": "35_49", "dtmf": "3", "labels": {"km": ["៣៥"], "en": ["35 49"]}},
-        {"code": "50_64", "dtmf": "4", "labels": {"km": ["៥០"], "en": ["50 64"]}},
-        {"code": "65_PLUS", "dtmf": "5", "labels": {"km": ["៦៥"], "en": ["65"]}}
+        {
+          "code": "18_24",
+          "dtmf": "1",
+          "labels": {
+            "km": [
+              "១៨"
+            ],
+            "en": [
+              "18 24"
+            ]
+          }
+        },
+        {
+          "code": "25_34",
+          "dtmf": "2",
+          "labels": {
+            "km": [
+              "២៥"
+            ],
+            "en": [
+              "25 34"
+            ]
+          }
+        },
+        {
+          "code": "35_49",
+          "dtmf": "3",
+          "labels": {
+            "km": [
+              "៣៥"
+            ],
+            "en": [
+              "35 49"
+            ]
+          }
+        },
+        {
+          "code": "50_64",
+          "dtmf": "4",
+          "labels": {
+            "km": [
+              "៥០"
+            ],
+            "en": [
+              "50 64"
+            ]
+          }
+        },
+        {
+          "code": "65_PLUS",
+          "dtmf": "5",
+          "labels": {
+            "km": [
+              "៦៥"
+            ],
+            "en": [
+              "65"
+            ]
+          }
+        }
       ]
     },
     {
@@ -111,7 +302,10 @@
       "unit": "នាក់",
       "min": 1,
       "max": 30,
-      "plausible": [1, 12],
+      "plausible": [
+        1,
+        12
+      ],
       "expected_seconds": 8,
       "text": {
         "km": "តើមានមនុស្សប៉ុន្មាននាក់រស់នៅក្នុងគ្រួសាររបស់លោកអ្នក? សូមប្រាប់ចំនួន។",
@@ -133,9 +327,15 @@
       "unit": "KHR/kg",
       "min": 500,
       "max": 30000,
-      "plausible": [2000, 6000],
+      "plausible": [
+        2000,
+        6000
+      ],
       "expected_seconds": 11,
-      "ask_if": {"step": "bought_rice", "equals": "yes"},
+      "ask_if": {
+        "step": "bought_rice",
+        "equals": "yes"
+      },
       "text": {
         "km": "តើលោកអ្នកបានបង់ថ្លៃប៉ុន្មានរៀល សម្រាប់អង្ករមួយគីឡូក្រាម? សូមប្រាប់ចំនួន។",
         "en": "How much did you pay in riel for one kilogram of rice? Say the amount."
@@ -147,7 +347,10 @@
       "unit": "KHR/litre",
       "min": 1000,
       "max": 60000,
-      "plausible": [6000, 15000],
+      "plausible": [
+        6000,
+        15000
+      ],
       "expected_seconds": 11,
       "text": {
         "km": "ចុះប្រេងចម្អិនអាហារមួយលីត្រ តើតម្លៃប៉ុន្មានរៀលនៅផ្សារថ្ងៃនេះ?",
@@ -163,9 +366,44 @@
         "en": "Compared with last month, have food prices gone up, stayed the same, or gone down? Up press 1. Same press 2. Down press 3."
       },
       "options": [
-        {"code": "hausse", "dtmf": "1", "labels": {"km": ["ឡើងថ្លៃ", "ឡើង"], "en": ["up"]}},
-        {"code": "stable", "dtmf": "2", "labels": {"km": ["ដដែល"], "en": ["same"]}},
-        {"code": "baisse", "dtmf": "3", "labels": {"km": ["ចុះថ្លៃ", "ចុះ"], "en": ["down"]}}
+        {
+          "code": "hausse",
+          "dtmf": "1",
+          "labels": {
+            "km": [
+              "ឡើងថ្លៃ",
+              "ឡើង"
+            ],
+            "en": [
+              "up"
+            ]
+          }
+        },
+        {
+          "code": "stable",
+          "dtmf": "2",
+          "labels": {
+            "km": [
+              "ដដែល"
+            ],
+            "en": [
+              "same"
+            ]
+          }
+        },
+        {
+          "code": "baisse",
+          "dtmf": "3",
+          "labels": {
+            "km": [
+              "ចុះថ្លៃ",
+              "ចុះ"
+            ],
+            "en": [
+              "down"
+            ]
+          }
+        }
       ]
     },
     {
@@ -193,14 +431,39 @@
     {
       "id": "chk_filtre_riz",
       "type": "implies",
-      "if": {"step": "bought_rice", "equals": "no"},
-      "then": {"step": "rice_price", "equals": "__skipped__"}
+      "if": {
+        "step": "bought_rice",
+        "equals": "no"
+      },
+      "then": {
+        "step": "rice_price",
+        "equals": "__skipped__"
+      }
     },
     {
       "id": "chk_severite_alimentaire",
       "type": "implies",
-      "if": {"step": "skipped_day", "equals": "yes"},
-      "then": {"step": "reduced_meals", "equals": "yes"}
+      "if": {
+        "step": "skipped_day",
+        "equals": "yes"
+      },
+      "then": {
+        "step": "reduced_meals",
+        "equals": "yes"
+      }
+    },
+    {
+      "id": "chk_taille_menage",
+      "type": "implies",
+      "_note": "Contrôle d'intégrité, présent côté camerounais et absent ici : un ménage déclaré au-delà de trente personnes après un achat de riz est une valeur à revérifier, pas à publier.",
+      "if": {
+        "step": "bought_rice",
+        "equals": "yes"
+      },
+      "then": {
+        "step": "hh_size",
+        "max": 30
+      }
     }
   ]
 }
