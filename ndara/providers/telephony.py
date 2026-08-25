@@ -216,39 +216,115 @@ class TwilioTelephony:
         except Exception as exc:                      # réseau, délai dépassé
             return CallResult(ok=False, error=str(exc))
 
-    def verifier(self) -> dict:
-        """Demande à l'opérateur ce qu'il pense de nos identifiants.
+    def _lire(self, url: str) -> tuple[dict | None, str]:
+        """Une lecture chez l'opérateur. Rend le corps, ou la raison du refus.
 
-        Une lecture, gratuite, sur la fiche du compte lui-même. Elle tranche en
-        une seconde ce que « identifiants refusés » laisse deviner pendant une
-        heure : soit l'opérateur reconnaît le compte et renvoie son état, soit
-        il refuse et on sait que la valeur du jeton est en cause.
-
-        Elle sert aussi à voir si le compte est encore en essai, ce qui décide
-        si le TwiML personnalisé est autorisé. Rien de ce qui est renvoyé n'est
-        secret : un nom de compte, un état, un type.
+        Aucune de ces lectures ne coûte quoi que ce soit et aucune ne modifie
+        le compte. C'est ce qui permet de tout demander d'un coup plutôt que
+        d'apprendre les défauts un appel facturé à la fois.
         """
         import urllib.request
 
-        if not self.available:
-            return {"ok": False, "raison": "identifiants incomplets"}
-        url = f"https://api.twilio.com/2010-04-01/Accounts/{self.sid}.json"
         auth = base64.b64encode(f"{self.sid}:{self.token}".encode()).decode()
         req = urllib.request.Request(url, headers={"Authorization": f"Basic {auth}"})
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                d = json.loads(resp.read().decode())
-            return {
-                "ok": True,
-                "compte": d.get("friendly_name", ""),
-                "etat": d.get("status", ""),
-                "type": d.get("type", ""),          # Trial ou Full
-                "essai": str(d.get("type", "")).lower() == "trial",
-            }
+                return json.loads(resp.read().decode()), ""
         except urllib.error.HTTPError as exc:
-            return {"ok": False, "raison": _detail_http(exc)}
+            return None, _detail_http(exc)
         except Exception as exc:
-            return {"ok": False, "raison": str(exc)[:200]}
+            return None, str(exc)[:200]
+
+    def verifier(self) -> dict:
+        """Demande à l'opérateur tout ce qu'un appel exige, sans passer d'appel.
+
+        Le code 20003 de Twilio recouvre trois causes très différentes :
+        identifiants refusés, permissions insuffisantes, solde épuisé. Le
+        message ne dit pas laquelle, et le tableau de bord affichait la
+        première comme si c'était la seule. Le résultat était prévisible : on
+        refait un jeton qui allait bien, deux fois, avant de soupçonner autre
+        chose.
+
+        Cette lecture tranche. Elle demande la fiche du compte, le solde, et ce
+        que le numéro appelant est réellement pour ce compte. Quatre requêtes
+        gratuites, aucune modification, et rien de secret dans ce qui revient :
+        un nom, un état, un montant, un numéro déjà connu.
+
+        Une sous-lecture qui échoue ne fait pas tomber l'audit. Elle laisse son
+        champ vide et l'ennui correspondant est signalé : un diagnostic partiel
+        vaut mieux qu'une page blanche, tant qu'il dit ce qu'il n'a pas pu voir.
+        """
+        if not self.available:
+            return {"ok": False, "raison": "identifiants incomplets"}
+
+        base = f"https://api.twilio.com/2010-04-01/Accounts/{self.sid}"
+
+        compte, refus = self._lire(f"{base}.json")
+        if compte is None:
+            # La fiche du compte est la seule lecture dont l'échec est
+            # concluant : sans elle, les identifiants sont bien en cause.
+            return {"ok": False, "raison": refus}
+
+        res: dict = {
+            "ok": True,
+            "compte": compte.get("friendly_name", ""),
+            "etat": compte.get("status", ""),
+            "type": compte.get("type", ""),          # Trial ou Full
+            "essai": str(compte.get("type", "")).lower() == "trial",
+            "ennuis": [],
+        }
+
+        # Le solde. Un compte peut être actif, complet, avec des identifiants
+        # parfaits, et refuser d'appeler parce qu'il n'a plus un sou. Twilio
+        # répond alors 20003, exactement comme pour un mauvais jeton.
+        solde, refus_solde = self._lire(f"{base}/Balance.json")
+        if solde is not None:
+            try:
+                montant = float(solde.get("balance") or 0)
+            except (TypeError, ValueError):
+                montant = 0.0
+            devise = solde.get("currency", "")
+            res["solde"] = montant
+            res["devise"] = devise
+            if montant <= 0:
+                res["ennuis"].append(
+                    "Le solde du compte est épuisé. C'est la deuxième cause du code "
+                    "20003, et elle ressemble à s'y méprendre à un jeton refusé : "
+                    "les identifiants sont acceptés en lecture, et l'appel est "
+                    "refusé. Rechargez le compte dans la console Twilio, Billing.")
+            elif montant < 1:
+                res["ennuis"].append(
+                    f"Solde très bas : {montant:.2f} {devise}. Un appel vers un "
+                    "mobile camerounais coûte 0,7873 $ la minute, il n'y a plus de "
+                    "quoi mener un entretien entier.")
+        else:
+            res["ennuis"].append("Solde illisible : " + refus_solde)
+
+        # Le numéro appelant. Twilio n'émet que depuis un numéro que le compte
+        # possède, ou depuis un numéro vérifié comme identifiant d'appelant. Un
+        # numéro qui n'est ni l'un ni l'autre fait échouer tous les appels, et
+        # la passation ne disait pas lequel des deux celui-ci était.
+        if self.from_number:
+            q = urllib.parse.quote(self.from_number)
+            achetes, _ = self._lire(f"{base}/IncomingPhoneNumbers.json?PhoneNumber={q}")
+            possede = bool((achetes or {}).get("incoming_phone_numbers"))
+            verifies, _ = self._lire(f"{base}/OutgoingCallerIds.json?PhoneNumber={q}")
+            verifie = bool((verifies or {}).get("outgoing_caller_ids"))
+
+            if possede:
+                res["numero_source"] = "acheté sur le compte"
+            elif verifie:
+                res["numero_source"] = "vérifié comme identifiant d'appelant"
+            else:
+                res["numero_source"] = "inconnu du compte"
+                res["ennuis"].append(
+                    f"Le numéro appelant {self.from_number} n'est ni un numéro du "
+                    "compte, ni un identifiant d'appelant vérifié. Twilio refusera "
+                    "tout appel émis depuis lui. Console Twilio, Phone Numbers : "
+                    "soit en acheter un, soit vérifier un numéro que vous possédez "
+                    "dans Verified Caller IDs, puis corriger TWILIO_FROM_NUMBER.")
+
+        return res
 
     def raccrocher(self, call_sid: str) -> bool:
         """Met fin à un appel en cours.

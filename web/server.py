@@ -108,7 +108,13 @@ _ERREURS_TWILIO = {
     "21211": "Numéro appelé invalide. Format international attendu, avec le « + ».",
     "21606": ("Le numéro appelant n'est pas utilisable pour émettre. Prenez un numéro "
               "Twilio du compte, ou vérifiez ce numéro comme identifiant d'appelant."),
-    "20003": "Identifiants refusés. Vérifiez TWILIO_ACCOUNT_SID et TWILIO_AUTH_TOKEN.",
+    # Twilio range trois causes sous ce seul code, et elles ne se corrigent pas
+    # du tout au même endroit. Annoncer la première comme si c'était la seule
+    # envoie refaire un jeton qui allait bien : c'est arrivé deux fois.
+    "20003": ("Opérateur : accès refusé. Trois causes possibles, dans cet ordre de "
+              "fréquence : le solde du compte est épuisé, le numéro appelant n'est "
+              "pas utilisable par ce compte, ou les identifiants sont faux. "
+              "Cliquez « Vérifier les identifiants » : le diagnostic dit laquelle."),
     "21608": ("Compte d'essai : ce numéro n'est pas vérifié. Ajoutez-le dans "
               "Verified Caller IDs."),
 }
@@ -152,14 +158,41 @@ def _forme_identifiants() -> list[str]:
     return ennuis
 
 
+def _code_twilio(erreur: str) -> str:
+    """Le code d'erreur de l'opérateur, et lui seul.
+
+    ``_detail_http`` compose « HTTP 400 · 21215 · message ». Chercher le code
+    par simple sous-chaîne dans le tout marcherait presque toujours, et se
+    tromperait le jour où un numéro appelé contient les mêmes cinq chiffres.
+    On lit donc le champ, pas le texte.
+    """
+    morceaux = [m.strip() for m in erreur.split("·")]
+    for m in morceaux[1:]:
+        if m.isdigit():
+            return m
+    return ""
+
+
 def _twilio_lisible(erreur: str) -> str:
-    """Rend une erreur d'opérateur actionnable, sans masquer l'originale."""
-    for code, explication in _ERREURS_TWILIO.items():
-        if code in erreur:
-            return f"{explication} (code {code})"
-    if "HTTP Error 401" in erreur:
-        return _ERREURS_TWILIO["20003"]
-    return erreur[:300]
+    """Rend une erreur d'opérateur actionnable, sans masquer l'originale.
+
+    Sans masquer, vraiment : la version précédente promettait ceci dans sa
+    première ligne et rendait uniquement sa propre traduction. Or c'est la
+    phrase de Twilio qui nomme la cause, et notre traduction qui la devine.
+    Quand les deux se contredisent, il faut pouvoir le voir.
+    """
+    code = _code_twilio(erreur)
+    explication = _ERREURS_TWILIO.get(code)
+    if explication is None:
+        for c, e in _ERREURS_TWILIO.items():
+            if c in erreur:
+                code, explication = c, e
+                break
+    if explication is None and "HTTP Error 401" in erreur:
+        code, explication = "20003", _ERREURS_TWILIO["20003"]
+    if explication is None:
+        return erreur[:300]
+    return f"{explication} (code {code}) Twilio dit : {erreur[:200]}"
 
 
 class App:

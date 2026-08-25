@@ -639,29 +639,59 @@ el("btn-camp-stop").onclick = async () => {
   el("camp-state").textContent = "Arrêt demandé. Les appels déjà en ligne vont au bout.";
 };
 
-/* Demander à l'opérateur ce qu'il pense de nos identifiants.
+/* Demander à l'opérateur tout ce qu'un appel exige, sans passer d'appel.
  *
- * Une lecture gratuite sur la fiche du compte. Elle tranche en une seconde
- * entre « le jeton est faux » et « le jeton est bon, mais autre chose bloque »,
- * là où « identifiants refusés » laisse chercher dans deux directions.
+ * Quatre lectures gratuites. Elles existent parce que le code 20003 de Twilio
+ * recouvre trois causes qui ne se corrigent pas au même endroit : jeton faux,
+ * solde épuisé, numéro appelant inutilisable par le compte. Le tableau de bord
+ * n'en annonçait qu'une, et a envoyé refaire deux fois un jeton qui allait
+ * bien. Un diagnostic qui ne cite qu'une cause sur trois est pire que pas de
+ * diagnostic : il est convaincant.
  */
+const echapper = (s) =>
+  String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
 el("btn-verif").onclick = async () => {
   el("btn-verif").disabled = true;
   el("verif-etat").textContent = "Interrogation de l'opérateur…";
   const r = await fetch("/api/telephonie/verifier", { method: "POST" })
     .then((x) => x.json()).catch(() => ({ ok: false, raison: "réseau" }));
   el("btn-verif").disabled = false;
-  if (r.ok) {
-    el("verif-etat").textContent =
-      `Identifiants acceptés. Compte « ${r.compte} », état ${r.etat}, type ${r.type}.`
-      + (r.essai
-        ? " ⚠ Ce compte est encore en essai : le TwiML personnalisé reste bloqué, "
-          + "donc NDARA ne pourra pas mener l'entretien tant que la mise à niveau "
-          + "n'est pas effective."
-        : " Le compte est complet : le TwiML personnalisé est autorisé.");
-  } else {
-    el("verif-etat").textContent = "Identifiants refusés par l'opérateur : " + (r.raison || "");
+
+  if (!r.ok) {
+    el("verif-etat").innerHTML =
+      "<strong>Identifiants refusés par l'opérateur.</strong> "
+      + echapper(r.raison || "")
+      + "<br>Cette lecture-ci est concluante : c'est bien la valeur du jeton ou "
+      + "du SID qui est en cause, et non le solde ni le numéro appelant.";
+    return;
   }
+
+  const lignes = [];
+  lignes.push("<strong>Identifiants acceptés.</strong> Compte « "
+    + echapper(r.compte) + " », état " + echapper(r.etat)
+    + ", type " + echapper(r.type) + ".");
+  lignes.push(r.essai
+    ? "⚠ Compte en essai : le TwiML personnalisé reste bloqué, donc NDARA ne peut "
+      + "pas mener l'entretien tant que la mise à niveau n'est pas effective."
+    : "Compte complet : le TwiML personnalisé est autorisé.");
+  if (r.solde !== undefined) {
+    lignes.push("Solde : " + Number(r.solde).toFixed(2) + " " + echapper(r.devise || "")
+      + ". Un entretien de deux minutes trente vers un mobile camerounais coûte "
+      + "environ deux dollars.");
+  }
+  if (r.numero_source) {
+    lignes.push("Numéro appelant : " + echapper(r.numero_source) + ".");
+  }
+
+  const ennuis = r.ennuis || [];
+  if (ennuis.length) {
+    lignes.push("<strong>Ce qui empêchera l'appel :</strong><ul>"
+      + ennuis.map((e) => "<li>" + echapper(e) + "</li>").join("") + "</ul>");
+  } else {
+    lignes.push("<strong>Rien ne s'oppose à un appel.</strong>");
+  }
+  el("verif-etat").innerHTML = lignes.join("<br>");
 };
 
 /* L'appel d'essai vers un numéro qu'on possède.

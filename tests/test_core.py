@@ -911,3 +911,106 @@ class TestSamplingAndPrivacy(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+# --------------------------------------------------------------------------
+# Le diagnostic de téléphonie
+#
+# Le code 20003 de Twilio recouvre trois causes qui ne se corrigent pas au même
+# endroit : jeton faux, solde épuisé, numéro appelant inutilisable. Le tableau
+# de bord n'en annonçait qu'une, et a envoyé refaire deux fois un jeton qui
+# allait bien. Ces tests verrouillent le fait qu'il les distingue désormais.
+# --------------------------------------------------------------------------
+class TestDiagnosticTelephonie(unittest.TestCase):
+
+    def _srv(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("srv_diag", ROOT / "web" / "server.py")
+        srv = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(srv)
+        return srv
+
+    def _adaptateur(self, reponses: dict):
+        """Un Twilio de papier : chaque URL rend ce qu'on lui a dit de rendre."""
+        from ndara.providers.telephony import TwilioTelephony
+        tel = TwilioTelephony(sid="AC" + "0" * 32, token="t" * 32,
+                              from_number="+17372508034",
+                              webhook_base="https://exemple.test")
+
+        def lire(url: str):
+            for motif, valeur in reponses.items():
+                if motif in url:
+                    return valeur if isinstance(valeur, tuple) else (valeur, "")
+            return None, "non prévu par le test"
+
+        tel._lire = lire                                   # type: ignore[method-assign]
+        return tel
+
+    COMPTE = {"friendly_name": "Compte", "status": "active", "type": "Full"}
+
+    def test_la_phrase_de_twilio_n_est_pas_jetee(self):
+        """Notre traduction devine la cause, la phrase de Twilio la nomme.
+
+        La version précédente promettait « sans masquer l'originale » dans sa
+        docstring et ne rendait que sa propre traduction. Quand les deux se
+        contredisent, il faut pouvoir le voir.
+        """
+        srv = self._srv()
+        dit = srv._twilio_lisible("HTTP 400 · 20003 · Authentication Error")
+        self.assertIn("Authentication Error", dit)
+        self.assertIn("20003", dit)
+
+    def test_le_code_est_lu_dans_son_champ_et_pas_dans_le_texte(self):
+        """Un numéro appelé peut contenir les cinq chiffres d'un code d'erreur."""
+        srv = self._srv()
+        self.assertEqual(srv._code_twilio("HTTP 400 · 21215 · calling +23721219000"),
+                         "21215")
+
+    def test_20003_ne_designe_plus_le_jeton_comme_seule_cause(self):
+        srv = self._srv()
+        dit = srv._twilio_lisible("HTTP 401 · 20003 · Authenticate")
+        self.assertIn("solde", dit.lower())
+
+    def test_un_solde_epuise_est_nomme(self):
+        """Identifiants acceptés en lecture, appel refusé : c'est le solde."""
+        tel = self._adaptateur({".json?": ({}, ""),
+                                "/Balance.json": {"balance": "0", "currency": "USD"},
+                                "IncomingPhoneNumbers": {"incoming_phone_numbers": [{}]},
+                                ".json": self.COMPTE})
+        res = tel.verifier()
+        self.assertTrue(res["ok"])
+        self.assertTrue(any("solde" in e.lower() for e in res["ennuis"]))
+
+    def test_un_numero_appelant_inconnu_du_compte_est_nomme(self):
+        tel = self._adaptateur({"/Balance.json": {"balance": "20.00", "currency": "USD"},
+                                "IncomingPhoneNumbers": {"incoming_phone_numbers": []},
+                                "OutgoingCallerIds": {"outgoing_caller_ids": []},
+                                ".json": self.COMPTE})
+        res = tel.verifier()
+        self.assertEqual(res["numero_source"], "inconnu du compte")
+        self.assertTrue(any("+17372508034" in e for e in res["ennuis"]))
+
+    def test_un_compte_sain_ne_signale_rien(self):
+        tel = self._adaptateur({"/Balance.json": {"balance": "20.00", "currency": "USD"},
+                                "IncomingPhoneNumbers": {"incoming_phone_numbers": [{}]},
+                                ".json": self.COMPTE})
+        res = tel.verifier()
+        self.assertEqual(res["ennuis"], [])
+        self.assertEqual(res["numero_source"], "acheté sur le compte")
+        self.assertFalse(res["essai"])
+
+    def test_une_sous_lecture_qui_echoue_ne_fait_pas_tomber_l_audit(self):
+        """Un diagnostic partiel vaut mieux qu'une page blanche."""
+        tel = self._adaptateur({"/Balance.json": (None, "passerelle en panne"),
+                                "IncomingPhoneNumbers": {"incoming_phone_numbers": [{}]},
+                                ".json": self.COMPTE})
+        res = tel.verifier()
+        self.assertTrue(res["ok"])
+        self.assertTrue(any("panne" in e for e in res["ennuis"]))
+
+    def test_des_identifiants_refuses_restent_concluants(self):
+        """La fiche du compte est la seule lecture dont l'échec tranche."""
+        tel = self._adaptateur({".json": (None, "HTTP 401 · 20003 · Authenticate")})
+        res = tel.verifier()
+        self.assertFalse(res["ok"])
+        self.assertIn("20003", res["raison"])
