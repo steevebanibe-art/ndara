@@ -446,6 +446,96 @@ class TestTelephonie(unittest.TestCase):
         self.assertNotIn("<Gather", xml)
 
 
+class TestAppelDEssai(unittest.TestCase):
+    """Appeler un numéro qu'on possède, pour éprouver la chaîne.
+
+    Une campagne tire au hasard : elle ne permet ni de choisir qui décroche,
+    ni de s'appeler soi-même. C'est juste pour collecter et inutilisable pour
+    vérifier que la ligne marche.
+    """
+
+    def test_un_numero_mal_forme_est_refuse_avec_la_correction(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("srv_t", ROOT / "web" / "server.py")
+        srv = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(srv)
+        tmp = tempfile.mkdtemp()
+        app = srv.App(str(Path(tmp) / "t.db"))
+        app.tel = _TelephonieFactice()
+        for mauvais in ("", "690000000", "0690000000", "abc", "+1"):
+            res = app.appel_unique(mauvais, app.default_qid)
+            self.assertFalse(res["lance"], mauvais)
+            self.assertIn("international", res["raison"])
+
+    def test_un_numero_correct_est_compose_et_marque_essai(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("srv_t2", ROOT / "web" / "server.py")
+        srv = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(srv)
+        tmp = tempfile.mkdtemp()
+        app = srv.App(str(Path(tmp) / "t.db"))
+        faux = _TelephonieFactice()
+        app.tel = faux
+        # Les espaces d'un numéro recopié à la main ne doivent pas le faire échouer.
+        res = app.appel_unique("+237 690 00 00 00", app.default_qid)
+        self.assertTrue(res["lance"], res.get("raison"))
+        self.assertEqual(faux.appels[0]["msisdn"], "+237690000000")
+        self.assertTrue(faux.appels[0]["essai"],
+                        "un appel d'essai doit se déclarer comme tel jusqu'au webhook")
+
+    def test_une_erreur_de_l_operateur_devient_actionnable(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("srv_t3", ROOT / "web" / "server.py")
+        srv = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(srv)
+        dit = srv._twilio_lisible("Unable to create record: ... 21219 ...")
+        self.assertIn("Verified Caller IDs", dit)
+        self.assertIn("21219", dit)
+        # Une erreur inconnue passe telle quelle plutôt que d'être avalée.
+        self.assertIn("panne inconnue", srv._twilio_lisible("panne inconnue"))
+
+    def test_un_entretien_d_essai_n_entre_pas_dans_les_estimations(self):
+        """S'interroger soi-même puis publier la réponse ne serait pas une mesure."""
+        from ndara.analysis import build_records
+        store, q, moteur, _tmp = fresh_engine()
+        for essai in (False, True):
+            p = moteur.start(language="fr", stratum="MTN", channel="phone")
+            iid = p.interview_id
+            if essai:
+                iv = store.get_interview(iid)
+                iv.meta["essai"] = True
+                store.save_interview(iv)
+            moteur.submit(iid)
+            moteur.submit(iid, dtmf="1")
+            moteur.submit(iid, dtmf="2")
+            garde = 0
+            while garde < 40:
+                garde += 1
+                p = moteur.submit(iid, dtmf="1")
+                if p.done:
+                    break
+        recs = build_records(store, q)
+        self.assertEqual(len(recs), 1, "l'entretien d'essai a été compté")
+
+
+class _TelephonieFactice:
+    """Un opérateur qui note ce qu'on lui demande, sans composer."""
+
+    name = "factice"
+
+    def __init__(self):
+        self.appels = []
+
+    def place_call(self, msisdn, questionnaire="", stratum="", lang="fr", essai=False):
+        from ndara.providers.telephony import CallResult
+        self.appels.append({"msisdn": msisdn, "questionnaire": questionnaire,
+                            "stratum": stratum, "lang": lang, "essai": essai})
+        return CallResult(ok=True, provider_call_id="CAfactice")
+
+    def raccrocher(self, call_sid):
+        return True
+
+
 class TestDoubleConsent(unittest.TestCase):
     """Le point le plus sensible du dossier : il doit être vérifié par un test."""
 

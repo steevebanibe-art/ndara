@@ -97,7 +97,6 @@
       <div class="wave-ctl">
         <label>Numéros
           <select id="camp-n">
-            <option value="1">1, essai</option>
             <option value="5">5</option>
             <option value="25" selected>25</option>
             <option value="100">100</option>
@@ -109,6 +108,27 @@
     </div>
     <div class="wave-bar"><i id="camp-fill"></i></div>
     <p class="hint" id="camp-state"></p>
+
+    <div class="wave">
+      <div>
+        <b>Appeler un numéro que vous possédez</b>
+        <p class="hint">
+          Pour éprouver la chaîne, pas pour collecter. Une campagne tire des numéros
+          au hasard dans les plages du régulateur : on ne peut donc ni choisir qui
+          décroche, ni s'appeler soi-même. Ici on compose un numéro précis, une fois.
+          L'entretien produit est marqué comme essai et <b>exclu des estimations</b> :
+          s'interroger soi-même puis publier la réponse ne serait pas une mesure.
+        </p>
+      </div>
+      <div class="wave-ctl">
+        <label>Numéro
+          <input id="essai-num" type="tel" placeholder="+237690000000"
+                 autocomplete="tel" inputmode="tel">
+        </label>
+        <button class="act" id="btn-essai">Appeler ce numéro</button>
+      </div>
+    </div>
+    <p class="hint" id="essai-etat"></p>
   </div>
 
   <h2 class="section">Collecte</h2>

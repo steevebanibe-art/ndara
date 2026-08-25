@@ -629,4 +629,36 @@ el("btn-camp-stop").onclick = async () => {
   el("camp-state").textContent = "Arrêt demandé. Les appels déjà en ligne vont au bout.";
 };
 
+/* L'appel d'essai vers un numéro qu'on possède.
+ *
+ * Pas de demande de confirmation ici, à la différence de la campagne : on
+ * compose un seul numéro, choisi et tapé à l'instant, et c'est le sien. Une
+ * fenêtre de confirmation sur un geste déjà explicite n'apprend rien et se
+ * clique sans lire, ce qui abîme celles qui comptent.
+ */
+el("btn-essai").onclick = async () => {
+  const numero = (el("essai-num").value || "").trim();
+  if (!numero) {
+    el("essai-etat").textContent =
+      "Entrez un numéro au format international, indicatif compris : +237690000000.";
+    return;
+  }
+  el("btn-essai").disabled = true;
+  el("essai-etat").textContent = "Composition…";
+  const r = await fetch("/api/appel", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ numero }),
+  }).then((x) => x.json()).catch(() => ({ lance: false, raison: "réseau" }));
+  el("btn-essai").disabled = false;
+  if (r.lance) {
+    el("essai-etat").textContent =
+      "Ça sonne. Décrochez : l'entretien démarre tout de suite, et cet écran le "
+      + "suit tour par tour dans la bande du haut.";
+    ligneFeed("Appel d'essai composé vers " + numero, "ok");
+  } else {
+    el("essai-etat").textContent = "Appel refusé : " + (r.raison || "");
+    ligneFeed("Appel d'essai refusé : " + (r.raison || ""), "bad");
+  }
+};
+
 brancher();

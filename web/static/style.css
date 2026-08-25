@@ -173,10 +173,12 @@ h3.sub {
   font-size: 11.5px; text-transform: uppercase; letter-spacing: .09em;
   color: var(--ink-faint);
 }
-.wave-ctl select {
+.wave-ctl select, .wave-ctl input {
   background: var(--panel-2); color: var(--ink); border: 1px solid var(--line);
   border-radius: 8px; padding: 10px 12px; font-size: 15px; font-family: inherit;
 }
+.wave-ctl input { min-width: 190px; font-variant-numeric: tabular-nums; }
+.wave-ctl input::placeholder { color: var(--ink-faint); }
 .wave-bar {
   height: 6px; border-radius: 3px; background: var(--line);
   overflow: hidden; margin-top: 14px;

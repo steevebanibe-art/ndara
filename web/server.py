@@ -20,6 +20,7 @@ import mimetypes
 import os
 import queue
 import random
+import re
 import sys
 import threading
 import time
@@ -93,6 +94,34 @@ class Bus:
     def count(self) -> int:
         with self._verrou:
             return len(self._abonnes)
+
+
+# Les erreurs de l'opérateur arrivent en anglais, avec un code et une URL.
+# Traduites, elles disent quoi faire ; brutes, elles font perdre une heure.
+_ERREURS_TWILIO = {
+    "21215": ("Ce pays n'est pas autorisé sur le compte. Console Twilio, "
+              "Voice, Settings, Geo permissions : cochez le pays et enregistrez."),
+    "21219": ("Ce numéro n'est pas vérifié. Un compte d'essai n'appelle que des "
+              "numéros vérifiés : Console Twilio, Phone Numbers, Verified Caller IDs."),
+    "21210": ("Le numéro appelant n'est pas vérifié ou n'appartient pas au compte. "
+              "Vérifiez TWILIO_FROM_NUMBER."),
+    "21211": "Numéro appelé invalide. Format international attendu, avec le « + ».",
+    "21606": ("Le numéro appelant n'est pas utilisable pour émettre. Prenez un numéro "
+              "Twilio du compte, ou vérifiez ce numéro comme identifiant d'appelant."),
+    "20003": "Identifiants refusés. Vérifiez TWILIO_ACCOUNT_SID et TWILIO_AUTH_TOKEN.",
+    "21608": ("Compte d'essai : ce numéro n'est pas vérifié. Ajoutez-le dans "
+              "Verified Caller IDs."),
+}
+
+
+def _twilio_lisible(erreur: str) -> str:
+    """Rend une erreur d'opérateur actionnable, sans masquer l'originale."""
+    for code, explication in _ERREURS_TWILIO.items():
+        if code in erreur:
+            return f"{explication} (code {code})"
+    if "HTTP Error 401" in erreur:
+        return _ERREURS_TWILIO["20003"]
+    return erreur[:300]
 
 
 class App:
@@ -445,6 +474,51 @@ class App:
         except Exception as exc:
             self.store.log("telephony_enregistrement_indisponible", None, erreur=str(exc)[:160])
             return None
+
+    def appel_unique(self, numero: str, qid: str, langue: str = "") -> dict:
+        """Appelle UN numéro que l'on possède, pour éprouver la chaîne.
+
+        Ce n'est pas une campagne, et la différence n'est pas cosmétique. Une
+        campagne tire des numéros au hasard dans les plages du régulateur : on
+        ne peut ni choisir qui décroche, ni s'appeler soi-même. C'est
+        exactement ce qu'il faut pour collecter, et exactement ce qu'il ne faut
+        pas pour éprouver.
+
+        L'entretien produit est marqué comme essai, et il est ensuite exclu des
+        estimations. Un appel qu'on se passe à soi-même pour vérifier que la
+        ligne marche n'est pas une observation : le compter reviendrait à
+        s'interroger soi-même et à publier la réponse.
+
+        Aucune unité de sondage n'est créée non plus, donc le taux de réponse
+        n'en sait rien. C'est déjà le cas de tout appel hors campagne, et c'est
+        volontaire.
+        """
+        # On interroge l'adaptateur, pas l'environnement : c'est lui qui
+        # composera, et c'est donc lui qui sait s'il en est capable.
+        if self.tel.name == "null":
+            etat = self.telephony_state()
+            return {"lance": False, "raison": "téléphonie non configurée",
+                    "manque": etat["manque"]}
+        if qid not in self.questionnaires:
+            return {"lance": False, "raison": f"questionnaire « {qid} » inconnu"}
+
+        numero = re.sub(r"[^0-9+]", "", numero or "")
+        if not re.fullmatch(r"\+[1-9]\d{7,14}", numero):
+            return {"lance": False, "raison":
+                    "Numéro au format international attendu, indicatif compris : "
+                    "+237690000000. Sans le « + » et l'indicatif, l'opérateur ne "
+                    "sait pas quel pays composer."}
+
+        q = self.questionnaires[qid]
+        res = self.tel.place_call(numero, questionnaire=qid, stratum="essai",
+                                  lang=langue or q.languages[0], essai=True)
+        self.store.log("telephony_appel_essai", None, ok=res.ok,
+                       call_sid=res.provider_call_id, erreur=res.error)
+        if not res.ok:
+            return {"lance": False, "raison": _twilio_lisible(res.error or "")}
+        self.bus.publish({"type": "campagne", "etat": "essai", "n": 1})
+        return {"lance": True, "call_sid": res.provider_call_id,
+                "questionnaire": qid}
 
     def machine_a_decroche(self, interview_id: str | None, call_sid: str,
                            repondu_par: str) -> None:
@@ -805,6 +879,16 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/campagne/arret":
             return self._json(APP.stop_campagne())
 
+        if route == "/api/appel":
+            # Un appel, vers un numéro qu'on possède, pour éprouver la chaîne.
+            # Distinct de la campagne, qui tire au hasard et ne permet donc ni
+            # de choisir qui décroche, ni de s'appeler soi-même.
+            body = self._read_json()
+            res = APP.appel_unique(str(body.get("numero") or ""),
+                                   body.get("questionnaire") or APP.default_qid,
+                                   body.get("langue") or "")
+            return self._json(res, 200 if res.get("lance") else 400)
+
         if route == "/api/wave":
             body = self._read_json()
             n = max(10, min(400, int(body.get("n") or 120)))
@@ -936,8 +1020,18 @@ class Handler(BaseHTTPRequestHandler):
                                   stratum=(qs.get("stratum") or ["MTN"])[0],
                                   channel="phone",
                                   msisdn=form.get("To"))
+            if (qs.get("essai") or [""])[0]:
+                # Un appel qu'on se passe à soi-même pour vérifier la ligne
+                # n'est pas une observation. On le marque ici, et l'analyse
+                # l'écarte : le compter reviendrait à s'interroger soi-même
+                # puis à publier la réponse.
+                iv = APP.store.get_interview(prompt.interview_id)
+                if iv is not None:
+                    iv.meta["essai"] = True
+                    iv.flags = list(iv.flags) + ["essai"]
+                    APP.store.save_interview(iv)
             APP.store.log("telephony_appel_decroche", prompt.interview_id,
-                          call_sid=form.get("CallSid"))
+                          call_sid=form.get("CallSid"), essai=bool((qs.get("essai") or [""])[0]))
             APP.bind_call(form.get("CallSid"), prompt.interview_id)
             return repondre(prompt, prompt.interview_id, langue)
 

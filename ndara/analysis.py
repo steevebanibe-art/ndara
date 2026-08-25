@@ -42,6 +42,11 @@ def build_records(store: Store, q: Questionnaire,
     for iv in store.interviews():
         if iv.disposition not in keep:
             continue
+        # Un appel qu'on se passe à soi-même pour vérifier que la ligne marche
+        # n'est pas une observation. Le compter reviendrait à s'interroger
+        # soi-même, puis à publier la réponse.
+        if iv.meta.get("essai"):
+            continue
         rec: Record = {"id": iv.id, "stratum": iv.stratum, "language": iv.language}
         for t in store.turns(iv.id):
             if t.code in MISSING:

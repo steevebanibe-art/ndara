@@ -41,8 +41,8 @@ class CallResult:
 class TelephonyAdapter(Protocol):
     name: str
 
-    def place_call(self, msisdn: str, questionnaire: str = "",
-                   stratum: str = "", lang: str = "fr") -> CallResult: ...
+    def place_call(self, msisdn: str, questionnaire: str = "", stratum: str = "",
+                   lang: str = "fr", essai: bool = False) -> CallResult: ...
 
     def raccrocher(self, call_sid: str) -> bool: ...
 
@@ -52,8 +52,8 @@ class NullTelephony:
 
     name = "null"
 
-    def place_call(self, msisdn: str, questionnaire: str = "",
-                   stratum: str = "", lang: str = "fr") -> CallResult:
+    def place_call(self, msisdn: str, questionnaire: str = "", stratum: str = "",
+                   lang: str = "fr", essai: bool = False) -> CallResult:
         return CallResult(ok=False, error="aucun fournisseur de téléphonie configuré")
 
     def raccrocher(self, call_sid: str) -> bool:
@@ -81,8 +81,8 @@ class TwilioTelephony:
     def available(self) -> bool:
         return bool(self.sid and self.token and self.from_number and self.webhook_base)
 
-    def place_call(self, msisdn: str, questionnaire: str = "",
-                   stratum: str = "", lang: str = "fr") -> CallResult:
+    def place_call(self, msisdn: str, questionnaire: str = "", stratum: str = "",
+                   lang: str = "fr", essai: bool = False) -> CallResult:
         """Compose un numéro. Aucun entretien n'est créé à ce stade.
 
         L'entretien naît quand quelqu'un décroche, pas quand on compose : créer
@@ -96,7 +96,8 @@ class TwilioTelephony:
         if not self.available:
             return CallResult(ok=False, error="identifiants Twilio incomplets")
         contexte = urllib.parse.urlencode(
-            {"questionnaire": questionnaire, "stratum": stratum, "lang": lang})
+            {"questionnaire": questionnaire, "stratum": stratum, "lang": lang,
+             **({"essai": "1"} if essai else {})})
         url = f"https://api.twilio.com/2010-04-01/Accounts/{self.sid}/Calls.json"
         data = urllib.parse.urlencode({
             "To": msisdn,
