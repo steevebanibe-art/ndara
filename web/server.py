@@ -513,12 +513,13 @@ class App:
         res = self.tel.place_call(numero, questionnaire=qid, stratum="essai",
                                   lang=langue or q.languages[0], essai=True)
         self.store.log("telephony_appel_essai", None, ok=res.ok,
-                       call_sid=res.provider_call_id, erreur=res.error)
+                       call_sid=res.provider_call_id, erreur=res.error,
+                       note=res.note)
         if not res.ok:
             return {"lance": False, "raison": _twilio_lisible(res.error or "")}
         self.bus.publish({"type": "campagne", "etat": "essai", "n": 1})
         return {"lance": True, "call_sid": res.provider_call_id,
-                "questionnaire": qid}
+                "questionnaire": qid, "note": res.note}
 
     def machine_a_decroche(self, interview_id: str | None, call_sid: str,
                            repondu_par: str) -> None:

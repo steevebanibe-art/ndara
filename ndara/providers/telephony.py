@@ -37,6 +37,20 @@ class CallResult:
     ok: bool
     provider_call_id: str | None = None
     error: str | None = None
+    note: str | None = None       # ce qui a été dégradé pour que l'appel parte
+
+
+def _parametres_refuses(erreur: str) -> bool:
+    """L'opérateur refuse-t-il un paramètre, plutôt que l'appel lui-même ?
+
+    Un compte d'essai n'a pas accès à tout. La distinction compte : un numéro
+    non vérifié demande une action de l'utilisateur, un paramètre refusé
+    demande seulement qu'on s'en passe.
+    """
+    e = (erreur or "").lower()
+    return ("disallowed parameters" in e
+            or "limited parameter access" in e
+            or "not allowed on trial" in e)
 
 
 def _detail_http(exc) -> str:
@@ -104,6 +118,9 @@ class TwilioTelephony:
         self.from_number = from_number or os.environ.get("TWILIO_FROM_NUMBER", "")
         self.webhook_base = (webhook_base or os.environ.get("NDARA_PUBLIC_URL", "")).rstrip("/")
         self.timeout = timeout
+        # Ce que le compte accepte réellement, appris au premier appel plutôt
+        # que déclaré à l'avance. None tant qu'on n'a pas essayé.
+        self.amd_actif: bool | None = None
 
     @property
     def available(self) -> bool:
@@ -119,42 +136,64 @@ class TwilioTelephony:
         l'appel et l'entretien se fait ensuite par l'identifiant d'appel que
         l'opérateur renvoie.
         """
-        import urllib.request
-
         if not self.available:
             return CallResult(ok=False, error="identifiants Twilio incomplets")
         contexte = urllib.parse.urlencode(
             {"questionnaire": questionnaire, "stratum": stratum, "lang": lang,
              **({"essai": "1"} if essai else {})})
-        url = f"https://api.twilio.com/2010-04-01/Accounts/{self.sid}/Calls.json"
-        data = urllib.parse.urlencode({
+
+        socle = {
             "To": msisdn,
             "From": self.from_number,
             "Url": f"{self.webhook_base}/twiml/start?{contexte}",
             "StatusCallback": f"{self.webhook_base}/twiml/status",
+            "Timeout": "25",
+        }
+        # Détection de répondeur, sans bloquer l'appel.
+        #
+        # En mode bloquant, Twilio retient la ligne le temps de décider si
+        # c'est une machine qui a décroché, et ce verdict prend plusieurs
+        # secondes. Pendant ce temps la personne a dit « allô » deux fois dans
+        # le vide : le premier contact d'un dispositif qui marche est un
+        # silence. En asynchrone, l'entretien démarre au décrochage et le
+        # verdict arrive séparément.
+        #
+        # Mais tous les comptes n'y ont pas droit : un compte d'essai refuse
+        # ces paramètres, et refuse l'appel entier avec eux. On les tente, et
+        # on s'en passe s'ils sont refusés. Un confort qui empêche d'appeler
+        # n'est plus un confort.
+        avances = {
             "StatusCallbackEvent": "initiated ringing answered completed",
-            # Détection de répondeur, mais SANS bloquer l'appel.
-            #
-            # En mode bloquant, Twilio retient la ligne le temps de décider si
-            # c'est une machine qui a décroché, et ce verdict peut prendre
-            # plusieurs secondes. Pendant ce temps la personne a dit « allô »
-            # deux fois dans le vide. C'est le défaut qui fait dire « ça ne
-            # marche pas » d'un dispositif qui marche : le premier contact est
-            # un silence.
-            #
-            # En mode asynchrone, l'entretien démarre à la seconde où l'on
-            # décroche, et le verdict arrive par un rappel séparé. On garde
-            # donc la disposition « non-contact » sur un répondeur, sans la
-            # payer en silence sur les vrais décrochages.
             "MachineDetection": "Enable",
             "AsyncAmd": "true",
             "AsyncAmdStatusCallback": f"{self.webhook_base}/twiml/amd",
             "AsyncAmdStatusCallbackMethod": "POST",
-            "Timeout": "25",
-        }).encode()
+        }
+
+        res = self._poster({**socle, **avances})
+        if res.ok:
+            self.amd_actif = True
+            return res
+        if _parametres_refuses(res.error or ""):
+            repli = self._poster(socle)
+            self.amd_actif = False
+            if repli.ok:
+                repli.note = (
+                    "Ce compte n'a pas accès à la détection de répondeur : l'appel "
+                    "est passé sans elle. Un répondeur écoutera donc le questionnaire "
+                    "au lieu d'être raccroché, et sera compté comme un entretien "
+                    "abandonné plutôt que comme un non-contact.")
+            return repli
+        return res
+
+    def _poster(self, params: dict) -> CallResult:
+        """Une tentative, et ce que l'opérateur en a dit."""
+        import urllib.request
+
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{self.sid}/Calls.json"
         auth = base64.b64encode(f"{self.sid}:{self.token}".encode()).decode()
         req = urllib.request.Request(
-            url, data=data,
+            url, data=urllib.parse.urlencode(params).encode(),
             headers={"Authorization": f"Basic {auth}",
                      "Content-Type": "application/x-www-form-urlencoded"},
         )

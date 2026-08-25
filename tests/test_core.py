@@ -483,6 +483,57 @@ class TestAppelDEssai(unittest.TestCase):
         self.assertTrue(faux.appels[0]["essai"],
                         "un appel d'essai doit se déclarer comme tel jusqu'au webhook")
 
+    def test_un_compte_qui_refuse_la_detection_de_repondeur_appelle_quand_meme(self):
+        """Un confort qui empêche d'appeler n'est plus un confort.
+
+        Un compte d'essai refuse les paramètres de détection de répondeur, et
+        refuse l'appel entier avec eux. On les tente, on s'en passe si besoin,
+        et on dit ce qu'on a perdu.
+        """
+        from ndara.providers.telephony import TwilioTelephony
+
+        tel = TwilioTelephony(sid="AC1", token="t", from_number="+15550001111",
+                              webhook_base="https://x")
+        tentatives = []
+
+        def faux_poster(params):
+            from ndara.providers.telephony import CallResult
+            tentatives.append(dict(params))
+            if "MachineDetection" in params:
+                return CallResult(ok=False, error=(
+                    "HTTP 400 · Invalid or disallowed parameters provided - trial "
+                    "accounts have limited parameter access, upgrade your account"))
+            return CallResult(ok=True, provider_call_id="CA1")
+
+        tel._poster = faux_poster
+        res = tel.place_call("+237690000000")
+
+        self.assertTrue(res.ok, "l'appel aurait dû partir sans la détection")
+        self.assertEqual(len(tentatives), 2, "il faut exactement une reprise")
+        self.assertIn("MachineDetection", tentatives[0])
+        self.assertNotIn("MachineDetection", tentatives[1])
+        self.assertNotIn("AsyncAmd", tentatives[1])
+        self.assertEqual(tentatives[1]["To"], "+237690000000")
+        self.assertFalse(tel.amd_actif)
+        self.assertIn("répondeur", res.note or "")
+
+    def test_un_vrai_refus_n_est_pas_retente(self):
+        """Un numéro non vérifié ne devient pas valable en retirant un paramètre."""
+        from ndara.providers.telephony import CallResult, TwilioTelephony
+
+        tel = TwilioTelephony(sid="AC1", token="t", from_number="+15550001111",
+                              webhook_base="https://x")
+        tentatives = []
+
+        def faux_poster(params):
+            tentatives.append(dict(params))
+            return CallResult(ok=False, error="HTTP 400 · 21219 · unverified")
+
+        tel._poster = faux_poster
+        res = tel.place_call("+237690000000")
+        self.assertFalse(res.ok)
+        self.assertEqual(len(tentatives), 1, "on ne rappelle pas pour rien")
+
     def test_le_corps_de_la_reponse_n_est_pas_jete(self):
         """« HTTP Error 400: Bad Request » est vrai et parfaitement inutile.
 

@@ -653,7 +653,10 @@ el("btn-essai").onclick = async () => {
   if (r.lance) {
     el("essai-etat").textContent =
       "Ça sonne. Décrochez : l'entretien démarre tout de suite, et cet écran le "
-      + "suit tour par tour dans la bande du haut.";
+      + "suit tour par tour dans la bande du haut."
+      // Ce qui a dû être dégradé pour que l'appel parte se dit, au lieu de
+      // laisser croire que tout tourne à pleine capacité.
+      + (r.note ? " " + r.note : "");
     ligneFeed("Appel d'essai composé vers " + numero, "ok");
   } else {
     el("essai-etat").textContent = "Appel refusé : " + (r.raison || "");
