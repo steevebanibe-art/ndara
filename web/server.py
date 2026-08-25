@@ -907,9 +907,19 @@ class Handler(BaseHTTPRequestHandler):
         def repondre(prompt, interview_id: str, langue: str) -> None:
             iv = APP.store.get_interview(interview_id)
             consenti = bool(iv and iv.consent_corpus == "granted")
+            # Sans moteur de transcription, un enregistrement ne rend qu'un
+            # fichier : la réponse arriverait vide, le moteur relancerait deux
+            # fois, et le corpus recevrait du son sans texte. On collecte
+            # quand on sait transcrire, et on dit quand on ne collecte pas.
+            transcrit = not isinstance(APP.asr, MockASR)
+            if consenti and not transcrit and prompt.kind == "question":
+                APP.store.log("corpus_segment_non_collecte", interview_id,
+                              etape=prompt.step_id,
+                              raison="aucun moteur de transcription configuré")
             action = f"{base}/twiml/step?interview_id={interview_id}&questionnaire={qid}"
             xml = prompt_to_twiml(prompt.to_dict(), action_url=action, audio_base=base,
-                                  corpus_consenti=consenti, langue=langue)
+                                  corpus_consenti=consenti, transcription=transcrit,
+                                  langue=langue)
             ligne = APP.touch(interview_id, canal="phone", langue=langue,
                               etape=prompt.step_id, questionnaire=qid,
                               progression=round(prompt.progress or 0.0, 3),

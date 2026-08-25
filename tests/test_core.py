@@ -294,8 +294,24 @@ class TestTelephonie(unittest.TestCase):
         from ndara.providers.telephony import prompt_to_twiml
         prompt = {"text": "Combien de personnes ?", "input_type": "number",
                   "allow_voice": True, "allow_dtmf": False, "options": []}
-        xml = prompt_to_twiml(prompt, action_url="https://x/step", corpus_consenti=True)
+        xml = prompt_to_twiml(prompt, action_url="https://x/step",
+                              corpus_consenti=True, transcription=True)
         self.assertIn("<Record", xml)
+
+    def test_pas_d_enregistrement_sans_moteur_de_transcription(self):
+        """Record ne rend qu'un fichier. Sans moteur, la réponse arriverait
+        vide, le moteur relancerait deux fois, et le corpus recevrait du son
+        sans texte. On collecte quand on sait transcrire."""
+        from ndara.providers.telephony import prompt_to_twiml
+        prompt = {"kind": "question", "text": "Combien de personnes ?",
+                  "input_type": "number", "allow_voice": True,
+                  "allow_dtmf": False, "options": []}
+        xml = prompt_to_twiml(prompt, action_url="https://x/step",
+                              corpus_consenti=True, transcription=False)
+        self.assertNotIn("<Record", xml)
+        # Et la question reste posée : le repli est Gather, qui transcrit au
+        # vol par le canal, pas un tour perdu.
+        self.assertIn("<Gather", xml)
 
     def test_question_sensible_jamais_enregistree_meme_consentie(self):
         from ndara.providers.telephony import prompt_to_twiml

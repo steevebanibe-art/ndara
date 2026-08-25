@@ -197,7 +197,7 @@ def _indices(prompt: dict) -> str:
 
 def prompt_to_twiml(prompt: dict, *, action_url: str, audio_base: str | None = None,
                     record_seconds: int = 12, corpus_consenti: bool = False,
-                    langue: str = "fr") -> str:
+                    transcription: bool = False, langue: str = "fr") -> str:
     """Convertit une invite du moteur en instructions téléphoniques.
 
     Deux modes de saisie sont toujours offerts ensemble : la parole et le
@@ -213,6 +213,20 @@ def prompt_to_twiml(prompt: dict, *, action_url: str, audio_base: str | None = N
     et seulement là où la parole a une valeur pour le corpus. Enregistrer
     d'abord et trier ensuite serait une collecte non consentie, quelle que
     soit la bonne foi du tri.
+
+    ET ON N'ENREGISTRE PAS UNE VOIX QU'ON NE SAIT PAS TRANSCRIRE
+    ------------------------------------------------------------
+    ``Record`` rend un fichier audio et rien d'autre : aucune transcription
+    n'accompagne le tour. Sans moteur de transcription configuré, la réponse
+    arrive donc vide, le moteur ne comprend pas, relance, relance encore, puis
+    renvoie au clavier. Le répondant a parlé deux fois pour rien, et l'appel
+    s'allonge de vingt secondes par question.
+
+    Le corpus y perdrait aussi : un segment sonore sans transcription n'est pas
+    un corpus annoté, c'est un fichier. Tant qu'aucun moteur n'est branché, on
+    passe donc par ``Gather``, qui fait transcrire au vol par le canal, et on
+    inscrit au journal que le segment consenti n'a pas été collecté. Un
+    consentement non utilisé se dit ; il ne se convertit pas en silence.
 
     ON PEUT COUPER UNE QUESTION, JAMAIS UN CONSENTEMENT
     ---------------------------------------------------
@@ -289,7 +303,7 @@ def prompt_to_twiml(prompt: dict, *, action_url: str, audio_base: str | None = N
     if prompt.get("allow_dtmf") and prompt.get("options"):
         poser(f'<Gather input="dtmf speech" numDigits="1" timeout="7" '
               f'{commun} hints="{escape(_indices(prompt))}"')
-    elif corpus_consenti and prompt.get("corpus_eligible", True):
+    elif corpus_consenti and transcription and prompt.get("corpus_eligible", True):
         lines.extend(enonce)
         lines.append(
             f'<Record action="{escape(action_url)}" method="POST" '
