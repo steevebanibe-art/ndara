@@ -46,7 +46,7 @@ Ce dépôt contient la seconde partie.
 Aucune dépendance externe. Python 3.11+ et rien d'autre.
 
 ```bash
-python -m unittest discover -s tests        # 91 tests
+python -m unittest discover -s tests        # 98 tests
 python scripts/simulate.py --n 500 --reset  # une vague simulée
 python scripts/report.py                    # la note de résultats
 python web/server.py                        # http://127.0.0.1:8000
@@ -186,6 +186,64 @@ chiffres, calculés et non recopiés.
 
 ---
 
+## L'appel, tel qu'il s'entend
+
+Trois réglages décident si un appel automatisé passe pour un entretien ou pour
+un robot. Aucun n'est visible dans une capture d'écran, et tous les trois
+s'entendent au premier appel.
+
+**On peut couper une question, jamais un consentement.** La lecture de la
+question se fait *dans* l'écoute : le répondant peut répondre avant la fin,
+comme il le ferait avec un enquêteur. Sans cela, l'écoute ne s'ouvre qu'une
+fois la phrase terminée, la première syllabe de la réponse se perd, et chaque
+tour porte un blanc qui trahit la machine. Sur l'annonce d'intelligence
+artificielle et sur les deux consentements, c'est l'inverse et ce n'est pas
+négociable : un « oui » lâché à la moitié d'une phrase n'est pas un
+consentement, donc la phrase se dit en entier avant que l'écoute s'ouvre.
+
+**La relance précède la question qu'elle relance, et garde la même voix.**
+« Je n'ai pas bien compris », puis la question à nouveau, dans la voix de
+studio. Les relances font partie des libellés pré-synthétisés : les faire dire
+par la voix de secours du canal reviendrait à changer de locuteur à l'instant
+précis où le répondant hésite déjà.
+
+**La reconnaissance sait ce qu'elle doit entendre.** Le moteur connaît les
+seules réponses recevables, ce sont les modalités de la question, et il les
+passe en indices. C'est gratuit et c'est là que la reconnaissance se trompe le
+plus : sur les noms de lieux et les mots régionaux. Le modèle est celui des
+réponses brèves, pas celui de la dictée, et le filtre de grossièretés est
+désactivé parce qu'une réponse d'enquête censurée en astérisques n'est plus
+une donnée.
+
+### Le répondeur, qui est un poste de coût avant d'être un cas statistique
+
+La détection de répondeur ne bloque pas l'appel. En mode bloquant, l'opérateur
+retient la ligne le temps de décider si c'est une machine qui a décroché, et
+pendant ce verdict la personne dit « allô » dans le vide. Le premier contact
+est alors un silence, et c'est ce qui fait dire d'un dispositif qui marche
+qu'il ne marche pas.
+
+Le verdict arrive donc de façon asynchrone, sur sa propre route. S'il dit
+« machine », l'entretien est classé non-contact et **l'appel est raccroché** :
+sans cela un répondeur écoute deux minutes trente de questionnaire, facturées
+comme un entretien. Sa route est séparée de celle de la fin d'appel, sans quoi
+le compteur d'appels simultanés serait libéré deux fois et la campagne
+composerait plus de numéros que son plafond.
+
+### Éprouver tout cela sans compte et sans dépenser une minute
+
+```bash
+TWILIO_AUTH_TOKEN=jeton_de_test_1234567890 NDARA_PUBLIC_URL=http://127.0.0.1:8170   python web/server.py --port 8170
+python scripts/appel_simule.py http://127.0.0.1:8170 http://127.0.0.1:8170
+```
+
+Le script rejoue l'opérateur, signatures HMAC comprises : requête forgée
+refusée, appel décroché, entretien complet tour par tour, répondeur détecté en
+cours d'appel, dispositions posées. Ce qu'il affiche entre parenthèses,
+« coupable », dit quels tours acceptent d'être interrompus.
+
+---
+
 ## La chaîne statistique
 
 ```
@@ -307,8 +365,8 @@ ndara/
 ├── data/questionnaires/   prix_denrees_cm (fr/en) · prix_denrees_kh (km/en, brouillon)
 ├── data/margins/          marges de calage
 ├── web/                   serveur stdlib + interface entretien + tableau de bord
-├── scripts/               simulate · report · build_audio
-└── tests/                 91 tests, stdlib
+├── scripts/               simulate · report · build_audio · appel_simule · fiche_relecture
+└── tests/                 98 tests, stdlib
 ```
 
 ---

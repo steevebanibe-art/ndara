@@ -60,6 +60,13 @@ class Prompt:
     done: bool = False
     interview_id: str | None = None
     note: str | None = None       # message d'accompagnement (relance, accusé)
+    note_audio_url: str | None = None
+    """Le même message, en voix de studio.
+
+    Une relance dite par la voix de secours du canal, au milieu d'un entretien
+    mené en voix de studio, s'entend immédiatement : la machine se dénonce au
+    moment précis où le répondant hésite déjà. Les relances font partie des
+    libellés pré-synthétisés, il suffisait de dire lequel."""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -69,6 +76,7 @@ class Prompt:
             "input_type": self.input_type, "unit": self.unit,
             "progress": round(self.progress, 3), "done": self.done,
             "interview_id": self.interview_id, "note": self.note,
+            "note_audio_url": self.note_audio_url,
         }
 
 
@@ -175,6 +183,7 @@ class InterviewEngine:
             if granted is None:
                 p = self._consent_prompt(iv, "survey")
                 p.note = self.q.prompt("relance_dtmf", iv.language)
+                p.note_audio_url = self._audio("relance_dtmf", iv.language)
                 p.allow_dtmf = True
                 return p
             if not granted:
@@ -199,12 +208,14 @@ class InterviewEngine:
             if granted is None:
                 p = self._consent_prompt(iv, "corpus")
                 p.note = self.q.prompt("relance_dtmf", iv.language)
+                p.note_audio_url = self._audio("relance_dtmf", iv.language)
                 return p
             iv.consent_corpus = (Consent.GRANTED.value if granted else Consent.REFUSED.value)
             self.store.save_interview(iv)
             self.store.log("consent_corpus", iv.id, granted=bool(granted))
             nxt = self._next_prompt(iv)
             nxt.note = self.q.prompt("consent_corpus_ack", iv.language)
+            nxt.note_audio_url = self._audio("consent_corpus_ack", iv.language)
             return nxt
 
         # -- 4. Questions --
@@ -275,7 +286,9 @@ class InterviewEngine:
             self.store.save_turn(turn)
             last = (relances + 1) >= step.max_relances
             p = self._prompt_for_step(iv, step)
-            p.note = self.q.prompt("relance_dtmf" if last else "relance_unclear", iv.language)
+            cle = "relance_dtmf" if last else "relance_unclear"
+            p.note = self.q.prompt(cle, iv.language)
+            p.note_audio_url = self._audio(cle, iv.language)
             p.allow_dtmf = last or p.allow_dtmf
             return p
 

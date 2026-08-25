@@ -446,6 +446,34 @@ class App:
             self.store.log("telephony_enregistrement_indisponible", None, erreur=str(exc)[:160])
             return None
 
+    def machine_a_decroche(self, interview_id: str | None, call_sid: str,
+                           repondu_par: str) -> None:
+        """Un répondeur a décroché : on note le non-contact et on raccroche.
+
+        Deux raisons, et les deux comptent. La comptable : sans raccrochage, le
+        répondeur écoute deux minutes trente de questionnaire, facturées comme
+        un entretien. La statistique : un répondeur n'est ni un refus ni une
+        réponse, c'est un non-contact, et confondre les trois fausse le taux de
+        réponse, qui est le premier chiffre qu'un lecteur sérieux regarde.
+
+        Le compteur d'appels simultanés n'est pas touché ici : c'est la fin
+        d'appel qui le libérera, et elle arrivera juste après.
+        """
+        from ndara.models import Disposition, utcnow
+
+        if interview_id:
+            iv = self.store.get_interview(interview_id)
+            if iv and iv.disposition == Disposition.IN_PROGRESS.value:
+                iv.disposition = Disposition.NONCONTACT.value
+                iv.ended_at = utcnow()
+                self.store.save_interview(iv)
+                self.drop(interview_id)
+                self.bus.publish({"type": "appel", "etat": "repondeur",
+                                  "id": interview_id[-6:]})
+        raccroche = self.tel.raccrocher(call_sid)
+        self.store.log("telephony_repondeur_raccroche", interview_id,
+                       repondu_par=repondu_par, raccroche=raccroche)
+
     def close_call(self, interview_id: str | None, form: dict) -> None:
         """Traduit la fin d'un appel en disposition AAPOR.
 
@@ -925,6 +953,22 @@ class Handler(BaseHTTPRequestHandler):
             except KeyError:
                 return self._send(404, b"entretien inconnu", "text/plain")
             return repondre(prompt, interview_id, iv.language)
+
+        if route == "/twiml/amd":
+            # Verdict de la détection de répondeur, rendu PENDANT l'appel.
+            #
+            # Il a sa propre route, et ce n'est pas un détail d'organisation :
+            # confondu avec la fin d'appel, il décrémenterait le compteur
+            # d'appels simultanés une fois de trop, et la campagne composerait
+            # plus de numéros que son plafond ne l'autorise.
+            call_sid = form.get("CallSid") or ""
+            iid = APP.par_call_sid.get(call_sid) or (qs.get("interview_id") or [None])[0]
+            repondu_par = (form.get("AnsweredBy") or "").lower()
+            APP.store.log("telephony_amd", iid, repondu_par=repondu_par or "—",
+                          duree_ms=form.get("MachineDetectionDuration"))
+            if repondu_par.startswith("machine") or repondu_par == "fax":
+                APP.machine_a_decroche(iid, call_sid, repondu_par)
+            return self._send(200, b"", "text/plain")
 
         if route == "/twiml/status":
             iid = (APP.par_call_sid.get(form.get("CallSid") or "")

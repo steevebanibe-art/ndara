@@ -310,7 +310,100 @@ class TestTelephonie(unittest.TestCase):
                   "options": [{"code": "F", "dtmf": "1"}, {"code": "M", "dtmf": "2"}]}
         xml = prompt_to_twiml(prompt, action_url="https://x/step")
         self.assertIn('input="dtmf speech"', xml)
-        self.assertIn('hints="12"', xml)
+        # Séparées par des virgules : « 12 » collé demandait à la
+        # reconnaissance d'attendre le mot « douze ».
+        self.assertIn('hints="1,2"', xml)
+
+    def test_les_modalites_sont_donnees_en_indices_de_reconnaissance(self):
+        """Le moteur connaît les seules réponses recevables. Les taire serait
+        laisser la reconnaissance deviner des noms de lieux toute seule."""
+        from ndara.providers.telephony import prompt_to_twiml
+        prompt = {"kind": "question", "text": "Quelle région ?", "allow_dtmf": True,
+                  "options": [{"code": "LT", "dtmf": "1", "label": "Littoral"},
+                              {"code": "EN", "dtmf": "2", "label": "Extrême-Nord"}]}
+        xml = prompt_to_twiml(prompt, action_url="https://x/step")
+        self.assertIn("Littoral", xml)
+        self.assertIn("Nord", xml)
+
+    def test_une_question_peut_etre_coupee_par_la_reponse(self):
+        """Sans cela, l'écoute ne commence qu'à la fin de la phrase : la
+        première syllabe se perd et chaque tour porte un blanc."""
+        from ndara.providers.telephony import prompt_to_twiml
+        prompt = {"kind": "question", "text": "Combien de personnes ?",
+                  "allow_voice": True, "allow_dtmf": True,
+                  "options": [{"code": "A", "dtmf": "1", "label": "un"}]}
+        xml = prompt_to_twiml(prompt, action_url="https://x/step")
+        self.assertIn("</Gather>", xml)
+        # La lecture est DANS l'écoute.
+        self.assertLess(xml.index("<Gather"), xml.index("Combien de personnes"))
+
+    def test_un_consentement_ne_peut_pas_etre_coupe(self):
+        """Un « oui » lâché à la moitié de la phrase n'est pas un consentement."""
+        from ndara.providers.telephony import prompt_to_twiml
+        prompt = {"kind": "consent", "text": "Acceptez-vous de répondre ?",
+                  "allow_voice": True, "allow_dtmf": True,
+                  "options": [{"code": "yes", "dtmf": "1", "label": "Oui"},
+                              {"code": "no", "dtmf": "2", "label": "Non"}]}
+        xml = prompt_to_twiml(prompt, action_url="https://x/step")
+        self.assertNotIn("</Gather>", xml)
+        # La phrase est dite en entier AVANT que l'écoute s'ouvre.
+        self.assertLess(xml.index("Acceptez-vous"), xml.index("<Gather"))
+
+    def test_la_relance_precede_la_question_et_garde_la_voix_de_studio(self):
+        from ndara.providers.telephony import prompt_to_twiml
+        prompt = {"kind": "question", "text": "Combien de personnes ?",
+                  "audio_url": "/audio/q/fr/hh_size.mp3",
+                  "note": "Je n'ai pas bien compris.",
+                  "note_audio_url": "/audio/q/fr/relance_unclear.mp3",
+                  "allow_voice": True, "allow_dtmf": False, "options": []}
+        xml = prompt_to_twiml(prompt, action_url="https://x/step",
+                              audio_base="https://x")
+        self.assertLess(xml.index("relance_unclear.mp3"), xml.index("hh_size.mp3"))
+        # Et pas un mot en voix de secours : la relance est pré-synthétisée.
+        self.assertNotIn("<Say", xml)
+
+    def test_la_reconnaissance_est_reglee_pour_des_reponses_breves(self):
+        from ndara.providers.telephony import prompt_to_twiml
+        xml = prompt_to_twiml({"kind": "question", "text": "Le prix ?",
+                               "allow_voice": True, "options": []},
+                              action_url="https://x/step")
+        self.assertIn('speechModel="googlev2_short"', xml)
+        # Une réponse d'enquête ne se fait pas censurer en « f*** » : ce qui
+        # est dit est la donnée.
+        self.assertIn('profanityFilter="false"', xml)
+        # Un silence remonte au moteur, qui relance, au lieu de tomber
+        # silencieusement dans le filet de sécurité.
+        self.assertIn('actionOnEmptyResult="true"', xml)
+
+    def test_le_repondeur_ne_se_paie_pas_en_silence_au_decrochage(self):
+        """La détection de répondeur ne doit pas retenir la ligne pendant que
+        la personne dit « allô » dans le vide."""
+        from ndara.providers.telephony import TwilioTelephony
+        tel = TwilioTelephony(sid="AC1", token="t", from_number="+237600000000",
+                              webhook_base="https://x")
+        vus = {}
+
+        class FauxReponse:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self): return b'{"sid": "CA1"}'
+
+        import urllib.request
+        vrai = urllib.request.urlopen
+        try:
+            urllib.request.urlopen = lambda req, timeout=None: (
+                vus.update(urllib.parse.parse_qsl(req.data.decode())), FauxReponse())[1]
+            res = tel.place_call("+237600000001")
+        finally:
+            urllib.request.urlopen = vrai
+        self.assertTrue(res.ok)
+        self.assertEqual(vus.get("AsyncAmd"), "true")
+        self.assertEqual(vus.get("MachineDetection"), "Enable")
+        # Le verdict de détection a sa propre route : confondu avec la fin
+        # d'appel, il libérerait un créneau de campagne encore occupé.
+        self.assertTrue(vus.get("AsyncAmdStatusCallback", "").endswith("/twiml/amd"))
+        self.assertNotEqual(vus.get("AsyncAmdStatusCallback"),
+                            vus.get("StatusCallback"))
 
     def test_la_boucle_se_referme_toujours(self):
         """Un silence total ne doit pas laisser l'appel ouvert : il se
