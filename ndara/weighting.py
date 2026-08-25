@@ -54,6 +54,12 @@ class RakeReport:
     iterations: int
     max_gap: float
     warnings: list[str] = field(default_factory=list)
+    # Les variables sur lesquelles on a réellement calé. Vide veut dire qu'il
+    # n'y a eu aucun calage, et cela doit se lire : sans marges, les poids
+    # restent des poids de sondage, et le biais de couverture n'est pas
+    # corrigé. Un calage inexistant qui « converge » est le pire des deux
+    # mondes, parce qu'il ressemble à un calage réussi.
+    variables: list[str] = field(default_factory=list)
 
 
 def rake(records: Sequence[Record], weights: Sequence[float],
@@ -67,6 +73,7 @@ def rake(records: Sequence[Record], weights: Sequence[float],
     """
     w = list(weights)
     warnings: list[str] = []
+    variables = list(margins)
     for var, targets in margins.items():
         present = {r.get(var) for r in records}
         for cat in targets:
@@ -94,7 +101,8 @@ def rake(records: Sequence[Record], weights: Sequence[float],
                     w[i] *= factor
         if gap < tol:
             break
-    return w, RakeReport(converged=gap < tol, iterations=it, max_gap=gap, warnings=warnings)
+    return w, RakeReport(converged=gap < tol, iterations=it, max_gap=gap,
+                         warnings=warnings, variables=variables)
 
 
 def trim(weights: Sequence[float], factor: float = 4.0) -> tuple[list[float], int]:
@@ -247,6 +255,7 @@ class WeightingResult:
                 "iterations": self.rake_report.iterations,
                 "max_gap": round(self.rake_report.max_gap, 5),
                 "warnings": self.rake_report.warnings,
+                "variables": self.rake_report.variables,
             },
         }
 

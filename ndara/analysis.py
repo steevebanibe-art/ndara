@@ -195,6 +195,12 @@ def _disclosure(wr, outcomes, quality) -> list[str]:
         "Biais de couverture non corrigé : les ménages sans accès à un téléphone "
         "restent hors du champ de l'enquête.",
     ]
+    if not wr.rake_report.variables:
+        lines.append(
+            "⚠ Aucun calage sur marges : ce questionnaire n'a pas de population "
+            "de référence renseignée. Les poids restent des poids de sondage, le "
+            "biais de couverture géographique n'est pas corrigé, et ces "
+            "estimations ne sont pas publiables comme représentatives.")
     if not wr.rake_report.converged:
         lines.append("⚠ Le calage sur marges n'a pas convergé : estimations à interpréter "
                      "avec prudence.")

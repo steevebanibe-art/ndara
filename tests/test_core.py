@@ -542,6 +542,30 @@ class TestWeighting(unittest.TestCase):
         self.assertGreaterEqual(res.design_effect, 1.0)
         self.assertLessEqual(res.effective_n, len(recs))
 
+    def test_absence_de_calage_est_signalee(self):
+        """Sans marges, le calage « converge » sans rien caler. Ça doit se lire.
+
+        Le questionnaire khmer n'a pas de population de référence : sans cette
+        ligne, ses estimations sortiraient avec l'apparence d'un calage réussi.
+        """
+        recs = self._records()
+        sans = build_weights(recs, {"MTN": 30, "ORANGE": 30}, {})
+        avec = build_weights(recs, {"MTN": 30, "ORANGE": 30},
+                             {"region": {"CENTRE": 0.5, "EST": 0.5}})
+        self.assertEqual(sans.rake_report.variables, [])
+        self.assertEqual(avec.rake_report.variables, ["region"])
+        self.assertTrue(sans.rake_report.converged,
+                        "un calage vide converge : c'est bien pourquoi il faut le dire")
+
+        from ndara.analysis import _disclosure
+        from ndara.sampling import OutcomeCounts
+        outcomes = OutcomeCounts(complete=40, partial=5, refusal=10, noncontact=20)
+        qualite = {"flagged_share": 0.0, "coding_agreement": {"agreement": None}}
+        dit_sans = " ".join(_disclosure(sans, outcomes, qualite))
+        dit_avec = " ".join(_disclosure(avec, outcomes, qualite))
+        self.assertIn("Aucun calage sur marges", dit_sans)
+        self.assertNotIn("Aucun calage sur marges", dit_avec)
+
     def test_jackknife_gives_interval(self):
         recs = self._records()
         margins = {"region": {"CENTRE": 0.5, "EST": 0.5}}
