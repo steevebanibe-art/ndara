@@ -114,6 +114,44 @@ _ERREURS_TWILIO = {
 }
 
 
+def _forme_identifiants() -> list[str]:
+    """Ce qui cloche dans la FORME des identifiants, sans jamais lire leur contenu.
+
+    Un identifiant de compte Twilio fait 34 caractères et commence par AC. Un
+    jeton en fait 32. Trois erreurs de collage sur quatre se voient là : une
+    valeur tronquée, un espace ramassé au passage, un champ mis pour l'autre.
+    Aucune ne demande d'afficher le secret, et aucune n'est visible dans
+    « identifiants refusés », qui ne dit ni lequel des deux ni pourquoi.
+    """
+    ennuis: list[str] = []
+    sid_brut = os.environ.get("TWILIO_ACCOUNT_SID", "")
+    jeton_brut = os.environ.get("TWILIO_AUTH_TOKEN", "")
+
+    for nom, brut, longueur, prefixe in (
+            ("TWILIO_ACCOUNT_SID", sid_brut, 34, "AC"),
+            ("TWILIO_AUTH_TOKEN", jeton_brut, 32, ""),
+    ):
+        if not brut:
+            continue
+        propre = brut.strip()
+        if propre != brut:
+            ennuis.append(f"{nom} porte un espace ou un retour à la ligne autour de "
+                          f"sa valeur : recollez-le sans rien avant ni après.")
+        if len(propre) != longueur:
+            ennuis.append(f"{nom} fait {len(propre)} caractères au lieu de {longueur} : "
+                          f"la valeur a été tronquée au collage, ou ce n'est pas la bonne.")
+        if prefixe and not propre.startswith(prefixe):
+            ennuis.append(f"{nom} ne commence pas par « {prefixe} » : c'est peut-être "
+                          f"une clé d'API, ou les deux champs ont été intervertis.")
+
+    if (sid_brut.strip().startswith("SK")
+            or (jeton_brut.strip().startswith("AC") and len(jeton_brut.strip()) == 34)):
+        ennuis.append("Une clé d'API ne remplace pas le jeton du compte : Twilio signe "
+                      "ses appels entrants avec le Primary Auth Token, onglet "
+                      "AUTH TOKENS et non API KEYS.")
+    return ennuis
+
+
 def _twilio_lisible(erreur: str) -> str:
     """Rend une erreur d'opérateur actionnable, sans masquer l'originale."""
     for code, explication in _ERREURS_TWILIO.items():
@@ -595,7 +633,15 @@ class App:
             self.campagne["aboutis"] += 1
 
     def telephony_state(self) -> dict:
-        """Ce qui manque encore pour pouvoir appeler, nommé un par un."""
+        """Ce qui manque encore pour pouvoir appeler, nommé un par un.
+
+        La forme des identifiants est vérifiée, jamais leur contenu. Un
+        identifiant de compte fait 34 caractères et commence par AC, un jeton
+        en fait 32 : trois erreurs de collage sur quatre se voient à ce
+        contrôle, et aucune ne demande de lire le secret. « Identifiants
+        refusés » ne dit pas lequel des deux, ni pourquoi ; « votre jeton fait
+        18 caractères au lieu de 32 » le dit.
+        """
         manque = []
         if not os.environ.get("TWILIO_ACCOUNT_SID"):
             manque.append("TWILIO_ACCOUNT_SID")
@@ -611,6 +657,7 @@ class App:
             "manque": manque,
             "numero": os.environ.get("TWILIO_FROM_NUMBER", ""),
             "adresse_publique": os.environ.get("NDARA_PUBLIC_URL", ""),
+            "forme": _forme_identifiants(),
             "campagne": dict(self.campagne),
         }
 

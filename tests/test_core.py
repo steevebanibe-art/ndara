@@ -483,6 +483,41 @@ class TestAppelDEssai(unittest.TestCase):
         self.assertTrue(faux.appels[0]["essai"],
                         "un appel d'essai doit se déclarer comme tel jusqu'au webhook")
 
+    def test_la_forme_des_identifiants_se_verifie_sans_les_lire(self):
+        """« Identifiants refusés » ne dit ni lequel des deux, ni pourquoi.
+
+        Un SID fait 34 caractères et commence par AC, un jeton en fait 32.
+        Trois erreurs de collage sur quatre se voient là, et aucune ne demande
+        d'afficher le secret.
+        """
+        import importlib.util
+        import os
+        spec = importlib.util.spec_from_file_location("srv_t4", ROOT / "web" / "server.py")
+        srv = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(srv)
+
+        avant = (os.environ.get("TWILIO_ACCOUNT_SID"), os.environ.get("TWILIO_AUTH_TOKEN"))
+        try:
+            def forme(sid, jeton):
+                os.environ["TWILIO_ACCOUNT_SID"] = sid
+                os.environ["TWILIO_AUTH_TOKEN"] = jeton
+                return " ".join(srv._forme_identifiants())
+
+            self.assertEqual(forme("AC" + "0" * 32, "f" * 32), "",
+                             "des identifiants bien formés ne doivent rien signaler")
+            self.assertIn("18 caractères", forme("AC" + "0" * 32, "f" * 18))
+            self.assertIn("espace", forme("AC" + "0" * 32, " " + "f" * 32))
+            self.assertIn("ne commence pas", forme("SK" + "0" * 32, "f" * 32))
+            self.assertIn("AUTH TOKENS", forme("SK" + "0" * 32, "f" * 32))
+            # Et surtout : le secret lui-même ne sort jamais du diagnostic.
+            self.assertNotIn("f" * 10, forme("AC" + "0" * 32, "f" * 18))
+        finally:
+            for cle, val in zip(("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"), avant):
+                if val is None:
+                    os.environ.pop(cle, None)
+                else:
+                    os.environ[cle] = val
+
     def test_un_compte_qui_refuse_la_detection_de_repondeur_appelle_quand_meme(self):
         """Un confort qui empêche d'appeler n'est plus un confort.
 

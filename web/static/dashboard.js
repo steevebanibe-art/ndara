@@ -67,6 +67,16 @@ function rendreTelephonie(t) {
       + t.manque.map((v) => `<tr><td class="mono">${v}</td><td>${AIDE_VARIABLES[v] || ""}</td></tr>`).join("")
       + `</tbody></table>`;
   }
+  // Les identifiants peuvent être présents et faux. « Identifiants refusés »
+  // ne dit ni lequel des deux, ni pourquoi ; leur forme, elle, se vérifie
+  // sans jamais les lire.
+  const forme = t.forme || [];
+  if (forme.length) {
+    html += `<p class="prov prov-simule" style="margin-top:12px">`
+      + `Les identifiants sont posés, mais leur forme est douteuse :</p>`
+      + `<ul class="disclosure">${forme.map((f) => `<li>${f}</li>`).join("")}</ul>`;
+  }
+
   el("tel-etat").innerHTML = html;
   el("btn-camp").disabled = !prete || !!c.active;
   el("btn-camp-stop").disabled = !c.active;
