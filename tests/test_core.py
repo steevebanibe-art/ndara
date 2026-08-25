@@ -483,6 +483,29 @@ class TestAppelDEssai(unittest.TestCase):
         self.assertTrue(faux.appels[0]["essai"],
                         "un appel d'essai doit se déclarer comme tel jusqu'au webhook")
 
+    def test_le_corps_de_la_reponse_n_est_pas_jete(self):
+        """« HTTP Error 400: Bad Request » est vrai et parfaitement inutile.
+
+        Le code et le message sont dans le corps. Les perdre transforme une
+        correction de trente secondes en après-midi perdue.
+        """
+        import io
+        import urllib.error
+        from ndara.providers.telephony import _detail_http
+
+        class FausseReponse(urllib.error.HTTPError):
+            def __init__(self, corps):
+                super().__init__("https://api.twilio.test", 400, "Bad Request",
+                                 {}, io.BytesIO(corps.encode()))
+
+        dit = _detail_http(FausseReponse(
+            '{"code": 21219, "message": "The number is unverified.", "status": 400}'))
+        self.assertIn("21219", dit)
+        self.assertIn("unverified", dit)
+        # Un corps qui n'est pas du JSON ne doit pas faire disparaître l'info.
+        self.assertIn("passerelle en panne",
+                      _detail_http(FausseReponse("passerelle en panne")))
+
     def test_une_erreur_de_l_operateur_devient_actionnable(self):
         import importlib.util
         spec = importlib.util.spec_from_file_location("srv_t3", ROOT / "web" / "server.py")

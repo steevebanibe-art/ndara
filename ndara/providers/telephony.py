@@ -25,6 +25,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import urllib.error
 import urllib.parse
 from dataclasses import dataclass
 from typing import Protocol
@@ -36,6 +37,33 @@ class CallResult:
     ok: bool
     provider_call_id: str | None = None
     error: str | None = None
+
+
+def _detail_http(exc) -> str:
+    """Ce que l'opérateur a réellement répondu, et pas seulement son code HTTP.
+
+    Twilio renvoie un JSON du genre ``{"code": 21219, "message": "...", ...}``.
+    ``str(HTTPError)`` n'en garde rien : il rend « HTTP Error 400: Bad
+    Request », qui est vrai et parfaitement inutile. On lit le corps, on en
+    tire le code et le message, et on garde le tout : c'est le code qui permet
+    de dire quoi corriger.
+    """
+    import json as _json
+
+    brut = ""
+    try:
+        brut = exc.read().decode("utf-8", "replace")
+    except Exception:
+        pass
+    code = message = ""
+    try:
+        d = _json.loads(brut)
+        code = str(d.get("code") or "")
+        message = str(d.get("message") or "")
+    except Exception:
+        message = brut[:300]
+    morceaux = [p for p in (f"HTTP {getattr(exc, 'code', '')}", code, message) if p]
+    return " · ".join(morceaux) or str(exc)
 
 
 class TelephonyAdapter(Protocol):
@@ -134,7 +162,14 @@ class TwilioTelephony:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 body = json.loads(resp.read().decode())
             return CallResult(ok=True, provider_call_id=body.get("sid"))
-        except Exception as exc:                      # réseau, quota, numéro invalide
+        except urllib.error.HTTPError as exc:
+            # Le corps porte le code et le message ; l'exception ne porte que
+            # « HTTP Error 400: Bad Request ». Jeter le corps, c'est remplacer
+            # « ce numéro n'est pas vérifié » par « mauvaise requête », et
+            # transformer une correction de trente secondes en après-midi
+            # perdue.
+            return CallResult(ok=False, error=_detail_http(exc))
+        except Exception as exc:                      # réseau, délai dépassé
             return CallResult(ok=False, error=str(exc))
 
     def raccrocher(self, call_sid: str) -> bool:
