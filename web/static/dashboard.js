@@ -115,6 +115,125 @@ const FLAG_LABELS = {
   repli_clavier_systematique: "Repli clavier systématique",
 };
 
+/* La vague omnibus : le modèle économique, calculé et non promis.
+ *
+ * Deux choses doivent se voir ici, et elles sont désagréables toutes les deux.
+ * Un appel a une durée maximale, donc les créneaux sont un stock épuisable.
+ * Et la même vague est bénéficiaire ou déficitaire selon qu'un accord
+ * opérateur existe ou non. Cacher la seconde reviendrait à se la faire dire
+ * en finale.
+ */
+function usd(x, d = 2) {
+  if (x == null) return "-";
+  const signe = x < 0 ? "moins " : "";
+  return signe + num(Math.abs(x), d) + " $";
+}
+
+async function chargerOmnibus() {
+  let o;
+  try {
+    o = await (await fetch("/api/omnibus")).json();
+  } catch (e) {
+    o = { disponible: false };
+  }
+  const bloc = ["omnibus-titre", "omni-tiles", "omni-panel", "omni-tarifs", "omni-note"];
+  if (!o || !o.disponible) {
+    bloc.forEach((id) => { const n = el(id); if (n) n.style.display = "none"; });
+    // Le chapeau vit entre le titre et les cartes : il part avec eux.
+    const chapo = el("omnibus-titre") && el("omnibus-titre").nextElementSibling;
+    if (chapo) chapo.style.display = "none";
+    return;
+  }
+
+  const v = o.vague;
+  const ref = o.facture.operateur;          // la vague telle qu'elle est vendable
+  const part = v.duree_engagee_s / v.duree_max_s;
+
+  el("omni-tiles").innerHTML = [
+    ["Durée de l'appel", `${num(v.duree_engagee_s, 0)}<i>s</i>`,
+     `sur ${num(v.duree_max_s, 0)} s au maximum, ${pct(part)} occupés`],
+    ["Créneaux vendus", num(v.questions_vendues),
+     `${v.creneaux.length} commanditaires, ${num(v.tronc.questions)} questions de tronc commun`],
+    ["Reste à vendre", `${num(v.duree_restante_s, 0)}<i>s</i>`,
+     v.duree_restante_s > 0
+       ? "une question fermée en occupe une dizaine"
+       : "l'appel est plein, un créneau de plus serait refusé"],
+    ["Recette de la vague", usd(ref.recette_totale_usd, 0),
+     `pour ${num(o.n_aboutis)} entretiens aboutis`],
+  ].map(([k, val, s]) => `<div class="ch">
+      <span class="ch-k">${k}</span>
+      <span class="ch-v">${val}</span>
+      <span class="ch-s">${s}</span>
+    </div>`).join("");
+
+  const parClient = {};
+  ref.lignes.forEach((l) => { parClient[l.client] = l; });
+  el("omni-creneaux").querySelector("tbody").innerHTML = v.creneaux.map((c) => {
+    const l = parClient[c.client] || {};
+    const marge = l.marge_usd;
+    return `<tr>
+      <td>${c.client}</td>
+      <td>${c.intitule}</td>
+      <td class="num">${num(c.questions)}</td>
+      <td class="num">${num(c.duree_s, 0)} s</td>
+      <td class="num">${usd(c.prix_usd, 0)}</td>
+      <td class="num">${usd(l.cout_impute_usd, 0)}</td>
+      <td class="num">${usd(marge, 0)}</td>
+    </tr>`;
+  }).join("");
+
+  const ordres = (o.rotations || [])
+    .map((r) => `appel ${r.rang + 1} : ${r.ordre.join(", puis ")}`)
+    .join(" · ");
+  el("omni-repartition").innerHTML =
+    "Le coût d'un appel est réparti au prorata des secondes que chaque créneau "
+    + "occupe : le tronc commun sert tout le monde, donc il se partage de la même "
+    + `façon. Rotation des créneaux : ${ordres}.`;
+
+  // Le fait central, dit avant qu'on nous le dise.
+  const tw = o.facture.twilio, op = o.facture.operateur;
+  const sup = o.question_supplementaire;
+  el("omni-tarifs").innerHTML = `
+    <h3 class="sub" style="margin-top:0">La même vague, sous deux tarifs</h3>
+    <div class="tablewrap">
+    <table class="data">
+      <thead><tr>
+        <th>Tarif de la minute</th><th class="num">Coût par entretien</th>
+        <th class="num">Coût de la vague</th><th class="num">Recette</th>
+        <th class="num">Marge</th><th class="num">Une question de plus</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td>${tw.tarif}</td>
+          <td class="num">${usd(tw.cout_par_entretien_usd)}</td>
+          <td class="num">${usd(tw.cout_total_usd, 0)}</td>
+          <td class="num">${usd(tw.recette_totale_usd, 0)}</td>
+          <td class="num">${usd(tw.marge_totale_usd, 0)}</td>
+          <td class="num">${usd(sup.twilio.cout_total_usd, 0)}</td>
+        </tr>
+        <tr>
+          <td>${op.tarif}</td>
+          <td class="num">${usd(op.cout_par_entretien_usd)}</td>
+          <td class="num">${usd(op.cout_total_usd, 0)}</td>
+          <td class="num">${usd(op.recette_totale_usd, 0)}</td>
+          <td class="num">${usd(op.marge_totale_usd, 0)}</td>
+          <td class="num">${usd(sup.operateur.cout_total_usd, 0)}</td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="hint" style="margin-top:14px">
+      La dernière colonne est ce qui décide du modèle : une question de plus dans
+      une vague déjà lancée n'ajoute ni incitation, ni quote-part d'appels échoués,
+      ni recrutement. Elle n'ajoute que des secondes de voix. À tarif de gros
+      public ces secondes coûtent presque autant que la question se vend ; sous
+      accord opérateur elles ne coûtent presque rien. C'est là, et nulle part
+      ailleurs, que l'omnibus devient un modèle économique.
+    </p>`;
+
+  el("omni-note").textContent = o.note;
+}
+
 async function load() {
   const d = await (await fetch("/api/dashboard")).json();
   const q = await (await fetch("/api/quality")).json();
@@ -312,6 +431,10 @@ async function load() {
 
 load();
 setInterval(load, 15000);
+
+// La composition de la vague et sa facture ne bougent pas pendant qu'on
+// regarde : elles se chargent une fois, pas toutes les quinze secondes.
+chargerOmnibus();
 
 /* ------------------------------------------------------------------ direct
  *

@@ -114,6 +114,33 @@
   <h2 class="section">Collecte</h2>
   <div class="chiffres" id="tiles"></div>
 
+  <h2 class="section" id="omnibus-titre">La vague du mois, et qui la paie</h2>
+  <p class="chapo">
+    Plusieurs commanditaires achètent des créneaux de questions dans le même appel.
+    Le tronc commun sert à tout le monde, parce que c'est lui qui permet de pondérer.
+    Chacun ne reçoit que ses propres réponses, et l'ordre des créneaux tourne d'un
+    appel à l'autre pour que personne ne soit vendu la dernière place au même prix.
+  </p>
+  <div class="chiffres" id="omni-tiles"></div>
+
+  <div class="panel" id="omni-panel" style="margin-top:26px">
+    <div class="tablewrap">
+      <table class="data" id="omni-creneaux">
+        <thead><tr>
+          <th>Commanditaire</th><th>Ce qu'il achète</th>
+          <th class="num">Questions</th><th class="num">Durée</th>
+          <th class="num">Recette</th><th class="num">Coût imputé</th><th class="num">Marge</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="hint" id="omni-repartition" style="margin-top:14px"></p>
+  </div>
+
+  <div class="panel" id="omni-tarifs" style="margin-top:20px"></div>
+
+  <p class="hint" id="omni-note" style="margin-top:16px"></p>
+
   <h2 class="section">Estimations pondérées</h2>
   <p class="chapo">
     Chaque chiffre est dessiné avec l'étendue de son erreur. Un intervalle large
@@ -152,13 +179,15 @@
 
   <h2 class="section">Qualité par question</h2>
   <div class="panel">
-    <table class="data" id="items">
-      <thead><tr>
-        <th>Question</th><th class="num">n</th><th class="num">Non-réponse</th>
-        <th class="num">Relances</th><th class="num">Repli clavier</th><th class="num">Durée moy.</th>
-      </tr></thead>
-      <tbody></tbody>
-    </table>
+    <div class="tablewrap">
+      <table class="data" id="items">
+        <thead><tr>
+          <th>Question</th><th class="num">n</th><th class="num">Non-réponse</th>
+          <th class="num">Relances</th><th class="num">Repli clavier</th><th class="num">Durée moy.</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </div>
 
   <h2 class="section">Corpus vocal consenti</h2>

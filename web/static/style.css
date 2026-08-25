@@ -568,3 +568,11 @@ footer.foot { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--l
   .speech { font-size: 18px; }
   .keypad { grid-template-columns: 1fr 1fr; }
 }
+
+/* ------------------------------------------------ un tableau qui ne déborde pas
+   Sur un téléphone, un tableau de sept colonnes est plus large que l'écran.
+   Sans ce conteneur il était rogné en silence : les dernières colonnes, donc
+   la marge, disparaissaient sans que rien ne le signale. Il défile
+   maintenant sur lui-même, et la page reste immobile. */
+.tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.tablewrap > table.data { min-width: 520px; }

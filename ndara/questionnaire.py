@@ -99,6 +99,7 @@ class Questionnaire:
     prompts: dict[str, dict[str, str]]
     steps: list[Step]
     checks: list[dict[str, Any]] = field(default_factory=list)
+    audio_id: str | None = None      # répertoire audio emprunté (vague composée)
 
     # ---------- accès ----------
 
@@ -122,6 +123,17 @@ class Questionnaire:
 
     def expected_duration_seconds(self) -> float:
         return sum(s.expected_seconds for s in self.steps)
+
+    def audio_dir_id(self) -> str:
+        """Le répertoire où chercher les libellés pré-synthétisés.
+
+        Une vague omnibus est un questionnaire composé à la volée : ses
+        questions ont été synthétisées sous l'identité du questionnaire
+        d'origine, et c'est là qu'il faut aller les chercher. Sans cette
+        indirection, une vague composée serait muette alors que les fichiers
+        existent.
+        """
+        return self.audio_id or self.id
 
     # ---------- chargement ----------
 
@@ -179,6 +191,7 @@ class Questionnaire:
             prompts=raw["prompts"],
             steps=steps,
             checks=raw.get("checks", []),
+            audio_id=raw.get("audio_id"),
         )
         q.validate()
         return q

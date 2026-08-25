@@ -115,7 +115,7 @@ class InterviewEngine:
         reste, pas lues par la synthèse du navigateur. Si le fichier n'existe
         pas, le client retombe tout seul sur la voix du navigateur.
         """
-        return f"/audio/{self.q.id}/{language}/{key}.mp3"
+        return f"/audio/{self.q.audio_dir_id()}/{language}/{key}.mp3"
 
     def _announce_prompt(self, iv: Interview) -> Prompt:
         return Prompt(
@@ -362,7 +362,7 @@ class InterviewEngine:
             kind="question",
             step_id=step.id,
             text=step.prompt(iv.language),
-            audio_url=f"/audio/{self.q.id}/{iv.language}/{step.id}.mp3",
+            audio_url=f"/audio/{self.q.audio_dir_id()}/{iv.language}/{step.id}.mp3",
             options=[{"code": o.code, "dtmf": o.dtmf, "label": o.label_for(iv.language)}
                      for o in step.options],
             allow_voice=True,

@@ -46,7 +46,7 @@ Ce dépôt contient la seconde partie.
 Aucune dépendance externe. Python 3.11+ et rien d'autre.
 
 ```bash
-python -m unittest discover -s tests        # 30 tests
+python -m unittest discover -s tests        # 91 tests
 python scripts/simulate.py --n 500 --reset  # une vague simulée
 python scripts/report.py                    # la note de résultats
 python web/server.py                        # http://127.0.0.1:8000
@@ -125,6 +125,64 @@ réponses en ligne droite, taux de « ne sait pas », relances, repli clavier, v
 implausibles, incohérences logiques (dont l'ordre de sévérité de l'échelle
 alimentaire). L'audit ne produit jamais une accusation : une **priorité de
 revérification**.
+
+---
+
+## La vague omnibus : plusieurs clients, un seul appel
+
+Un client achète un créneau d'une à trois questions dans la vague du mois.
+Toutes les questions achetées sont posées pendant le même appel, à la suite du
+tronc commun, et chaque client ne reçoit que ses réponses à lui.
+
+Ce n'est pas une idée neuve : c'est le modèle qui fait vivre les instituts de
+sondage depuis quarante ans. Ce qui est neuf, c'est de l'apporter automatisé et
+vocal là où il n'existe pas. Sa raison d'être tient en une ligne : **le coût
+d'un appel se partage, celui d'une question de plus ne se partage pas.**
+
+Trois décisions, et chacune répond à une objection.
+
+**Un créneau qui ne tient pas dans l'appel est refusé avant la vente**, avec le
+nombre de secondes restantes et la correction à faire. Au-delà de deux minutes
+trente, l'abandon dégrade les données de tous les clients de la vague, pas
+seulement celles du dernier arrivé.
+
+**L'ordre des créneaux tourne d'un appel à l'autre.** Le dernier bloc d'un
+questionnaire est répondu plus vite, plus souvent par « ne sait pas », et par
+un échantillon déjà amputé de ceux qui ont raccroché. Vendre la dernière place
+au même prix que la première ne se défend pas. La rotation est cyclique : sur k
+appels, chaque bloc occupe chaque position exactement une fois, et sa position
+est enregistrée avec l'entretien pour qu'un effet de position reste
+contrôlable. Limite connue : une rotation cyclique équilibre les positions,
+pas les voisinages ; un plan de Williams le ferait, il n'est pas fait.
+
+**Le tronc commun passe en premier**, à rebours de l'usage en face-à-face. Au
+téléphone l'appel peut se couper à n'importe quelle seconde, et un entretien
+sans ses variables de calage ne se pondère pas : il est perdu pour tous les
+clients, y compris ceux dont les questions avaient déjà été posées.
+
+### Ce que le calcul dit du modèle économique
+
+Vague de démonstration, 137 secondes d'appel, trois commanditaires, six
+questions vendues à 500 dollars, 3 000 entretiens aboutis :
+
+| | Twilio, Cameroun | Accord opérateur |
+|---|---|---|
+| Coût par entretien | 2,79 $ | 0,86 $ |
+| Coût de la vague | 8 363 $ | 2 571 $ |
+| Recette | 3 000 $ | 3 000 $ |
+| **Marge** | **moins 5 363 $** | **429 $** |
+| Une question de plus (10 s) | 394 $ | 76 $ |
+
+La dernière ligne est celle qui décide. Une question de plus dans une vague
+déjà lancée n'ajoute ni incitation, ni quote-part d'appels échoués, ni
+recrutement : elle n'ajoute que des secondes de voix. À tarif de gros public
+ces secondes coûtent presque autant que la question se vend ; sous accord
+opérateur elles ne coûtent presque rien. **C'est là, et nulle part ailleurs,
+que l'omnibus devient un modèle économique**, et c'est pourquoi l'accord de
+minutes n'est pas un confort mais la condition de viabilité.
+
+La section « La vague du mois, et qui la paie » du tableau de bord affiche ces
+chiffres, calculés et non recopiés.
 
 ---
 
@@ -244,12 +302,13 @@ ndara/
 │   ├── audit.py           auto-contrôle, rapport de qualité, accord de codage (kappa)
 │   ├── corpus.py          corpus consenti, expurgation, retrait, fiche descriptive
 │   ├── analysis.py        estimations publiées + limites publiées
+│   ├── omnibus.py         vague omnibus : créneaux, rotation, facturation
 │   └── providers/         ASR · TTS · téléphonie — tous optionnels
 ├── data/questionnaires/   prix_denrees_cm (fr/en) · prix_denrees_kh (km/en, brouillon)
 ├── data/margins/          marges de calage
 ├── web/                   serveur stdlib + interface entretien + tableau de bord
 ├── scripts/               simulate · report · build_audio
-└── tests/                 30 tests, stdlib
+└── tests/                 91 tests, stdlib
 ```
 
 ---

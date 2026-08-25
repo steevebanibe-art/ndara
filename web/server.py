@@ -41,6 +41,7 @@ from ndara.providers.asr import MockASR, default_asr  # noqa: E402
 from ndara.providers.telephony import (  # noqa: E402
     default_telephony, prompt_to_twiml, signature_valide,
 )
+from ndara import omnibus  # noqa: E402
 from ndara.questionnaire import Questionnaire  # noqa: E402
 from ndara.sampling import load_margins  # noqa: E402
 from ndara.storage import Store  # noqa: E402
@@ -113,6 +114,17 @@ class App:
         self.margins = {
             "prix_denrees_cm": load_margins(ROOT / "data" / "margins" / "cm_margins.json"),
         }
+        # La vague omnibus de démonstration. Elle ne crée aucune question :
+        # elle redécoupe un questionnaire déjà synthétisé en un tronc commun
+        # et trois créneaux, pour que le modèle économique se voie au lieu de
+        # se lire. Si le questionnaire de référence manque, la section
+        # disparaît de l'écran plutôt que de faire tomber le serveur.
+        try:
+            self.vague = omnibus.vague_de_demonstration(
+                self.questionnaires[self.default_qid])
+        except Exception:
+            self.vague = None
+
         self.tel = default_telephony()
         self.par_call_sid: dict[str, str] = {}
         self.campagne: dict = {"active": False, "places": 0, "plafond": 0,
@@ -342,6 +354,55 @@ class App:
                  "draft": q.version.endswith("draft")}
                 for qid, q in self.questionnaires.items()
             ],
+        }
+
+    # ------------------------------------------------------------------
+    # La vague omnibus
+    # ------------------------------------------------------------------
+
+    def omnibus_view(self, n_aboutis: int = 3000) -> dict:
+        """La vague du mois : ce qui est vendu, ce qu'il reste, ce que ça rapporte.
+
+        Le même calcul est fait sous les deux tarifs, parce que le fait le
+        plus important du modèle économique est qu'il change de signe entre
+        les deux. Le dire soi-même vaut mieux que se le faire dire.
+        """
+        if self.vague is None:
+            return {"disponible": False,
+                    "raison": "aucun questionnaire de référence pour composer une vague"}
+
+        v = self.vague
+        twilio = v.facture(n_aboutis, omnibus.TARIF_TWILIO_CM)
+        operateur = v.facture(n_aboutis, omnibus.TARIF_OPERATEUR)
+
+        # Ce que coûterait une question de plus, si elle tenait dans l'appel.
+        # Dix secondes est la durée d'une question fermée de ce questionnaire.
+        marginal = {
+            "twilio": v.cout_question_supplementaire(10.0, n_aboutis,
+                                                     omnibus.TARIF_TWILIO_CM),
+            "operateur": v.cout_question_supplementaire(10.0, n_aboutis,
+                                                        omnibus.TARIF_OPERATEUR),
+        }
+
+        # L'ordre des créneaux pour les premiers appels : la rotation se
+        # constate, elle ne se prend pas sur parole.
+        rotations = [
+            {"rang": r,
+             "ordre": [v.creneaux[i].client for i in v.rotation(r)]}
+            for r in range(len(v.creneaux))
+        ]
+
+        return {
+            "disponible": True,
+            "vague": v.as_dict(),
+            "n_aboutis": n_aboutis,
+            "facture": {"twilio": twilio, "operateur": operateur},
+            "question_supplementaire": marginal,
+            "rotations": rotations,
+            "note": (
+                "Vague de démonstration : elle redécoupe un questionnaire déjà "
+                "synthétisé en un tronc commun et trois créneaux. Les clients "
+                "nommés sont des exemples, aucun contrat n'existe."),
         }
 
     # ------------------------------------------------------------------
@@ -643,6 +704,15 @@ class Handler(BaseHTTPRequestHandler):
 
         if route == "/api/corpus":
             return self._json(APP.corpus.stats())
+
+        if route == "/api/omnibus":
+            # Combien d'entretiens aboutis on suppose pour chiffrer la vague.
+            # Par défaut la taille d'une vague nationale mensuelle du dossier.
+            try:
+                n_aboutis = max(1, int((qs.get("n") or ["3000"])[0]))
+            except ValueError:
+                n_aboutis = 3000
+            return self._json(APP.omnibus_view(n_aboutis))
 
         return self._send(404, b"not found", "text/plain")
 
