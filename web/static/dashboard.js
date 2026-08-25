@@ -639,6 +639,31 @@ el("btn-camp-stop").onclick = async () => {
   el("camp-state").textContent = "Arrêt demandé. Les appels déjà en ligne vont au bout.";
 };
 
+/* Demander à l'opérateur ce qu'il pense de nos identifiants.
+ *
+ * Une lecture gratuite sur la fiche du compte. Elle tranche en une seconde
+ * entre « le jeton est faux » et « le jeton est bon, mais autre chose bloque »,
+ * là où « identifiants refusés » laisse chercher dans deux directions.
+ */
+el("btn-verif").onclick = async () => {
+  el("btn-verif").disabled = true;
+  el("verif-etat").textContent = "Interrogation de l'opérateur…";
+  const r = await fetch("/api/telephonie/verifier", { method: "POST" })
+    .then((x) => x.json()).catch(() => ({ ok: false, raison: "réseau" }));
+  el("btn-verif").disabled = false;
+  if (r.ok) {
+    el("verif-etat").textContent =
+      `Identifiants acceptés. Compte « ${r.compte} », état ${r.etat}, type ${r.type}.`
+      + (r.essai
+        ? " ⚠ Ce compte est encore en essai : le TwiML personnalisé reste bloqué, "
+          + "donc NDARA ne pourra pas mener l'entretien tant que la mise à niveau "
+          + "n'est pas effective."
+        : " Le compte est complet : le TwiML personnalisé est autorisé.");
+  } else {
+    el("verif-etat").textContent = "Identifiants refusés par l'opérateur : " + (r.raison || "");
+  }
+};
+
 /* L'appel d'essai vers un numéro qu'on possède.
  *
  * Pas de demande de confirmation ici, à la différence de la campagne : on

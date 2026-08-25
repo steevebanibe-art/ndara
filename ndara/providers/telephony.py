@@ -88,6 +88,8 @@ class TelephonyAdapter(Protocol):
 
     def raccrocher(self, call_sid: str) -> bool: ...
 
+    def verifier(self) -> dict: ...
+
 
 class NullTelephony:
     """Aucun appel. Utilisé tant que le compte opérateur n'est pas ouvert."""
@@ -100,6 +102,9 @@ class NullTelephony:
 
     def raccrocher(self, call_sid: str) -> bool:
         return False
+
+    def verifier(self) -> dict:
+        return {"ok": False, "raison": "aucun fournisseur de téléphonie configuré"}
 
 
 class TwilioTelephony:
@@ -210,6 +215,40 @@ class TwilioTelephony:
             return CallResult(ok=False, error=_detail_http(exc))
         except Exception as exc:                      # réseau, délai dépassé
             return CallResult(ok=False, error=str(exc))
+
+    def verifier(self) -> dict:
+        """Demande à l'opérateur ce qu'il pense de nos identifiants.
+
+        Une lecture, gratuite, sur la fiche du compte lui-même. Elle tranche en
+        une seconde ce que « identifiants refusés » laisse deviner pendant une
+        heure : soit l'opérateur reconnaît le compte et renvoie son état, soit
+        il refuse et on sait que la valeur du jeton est en cause.
+
+        Elle sert aussi à voir si le compte est encore en essai, ce qui décide
+        si le TwiML personnalisé est autorisé. Rien de ce qui est renvoyé n'est
+        secret : un nom de compte, un état, un type.
+        """
+        import urllib.request
+
+        if not self.available:
+            return {"ok": False, "raison": "identifiants incomplets"}
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{self.sid}.json"
+        auth = base64.b64encode(f"{self.sid}:{self.token}".encode()).decode()
+        req = urllib.request.Request(url, headers={"Authorization": f"Basic {auth}"})
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                d = json.loads(resp.read().decode())
+            return {
+                "ok": True,
+                "compte": d.get("friendly_name", ""),
+                "etat": d.get("status", ""),
+                "type": d.get("type", ""),          # Trial ou Full
+                "essai": str(d.get("type", "")).lower() == "trial",
+            }
+        except urllib.error.HTTPError as exc:
+            return {"ok": False, "raison": _detail_http(exc)}
+        except Exception as exc:
+            return {"ok": False, "raison": str(exc)[:200]}
 
     def raccrocher(self, call_sid: str) -> bool:
         """Met fin à un appel en cours.

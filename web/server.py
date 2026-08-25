@@ -927,6 +927,16 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/campagne/arret":
             return self._json(APP.stop_campagne())
 
+        if route == "/api/telephonie/verifier":
+            # Une lecture chez l'opérateur, gratuite, qui tranche entre « le
+            # jeton est faux » et « le jeton est bon mais autre chose bloque ».
+            res = APP.tel.verifier()
+            APP.store.log("telephony_verification", None, ok=res.get("ok"),
+                          etat=res.get("etat"), type=res.get("type"))
+            if not res.get("ok"):
+                res["raison"] = _twilio_lisible(res.get("raison") or "")
+            return self._json(res, 200 if res.get("ok") else 400)
+
         if route == "/api/appel":
             # Un appel, vers un numéro qu'on possède, pour éprouver la chaîne.
             # Distinct de la campagne, qui tire au hasard et ne permet donc ni
