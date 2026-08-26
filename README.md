@@ -46,7 +46,7 @@ Ce dépôt contient la seconde partie.
 Aucune dépendance externe. Python 3.11+ et rien d'autre.
 
 ```bash
-python -m unittest discover -s tests        # 98 tests
+python -m unittest discover -s tests        # 115 tests
 python scripts/simulate.py --n 500 --reset  # une vague simulée
 python scripts/report.py                    # la note de résultats
 python web/server.py                        # http://127.0.0.1:8000
@@ -366,7 +366,7 @@ ndara/
 ├── data/margins/          marges de calage
 ├── web/                   serveur stdlib + interface entretien + tableau de bord
 ├── scripts/               simulate · report · build_audio · appel_simule · fiche_relecture
-└── tests/                 98 tests, stdlib
+└── tests/                 115 tests, stdlib
 ```
 
 ---
