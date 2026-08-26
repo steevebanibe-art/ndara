@@ -97,7 +97,12 @@
   --ease: cubic-bezier(.22, .61, .36, 1);
   --ease-out: cubic-bezier(.16, 1, .3, 1);
 
-  --line-y: 62.5vh;       /* la ligne de mesure, recalculee au pixel en JS */
+  --line-y: 62.5vh;       /* la hauteur de la ligne de mesure */
+  --colonne: 892px;       /* la colonne de lecture : .wrap 940 moins ses marges */
+  --gouttiere: 24px;
+  --trait: 1.5px;         /* l'epaisseur de la ligne, partout, sans exception */
+  --carre: 12px;          /* le carre par lequel la ligne entre dans un objet */
+  --axe-repos: .62; --axe-parle: .30; --axe-ecoute: .92;
   --mesure: 66ch;         /* la longueur de ligne au dela de laquelle on relit mal */
 }
 
@@ -173,6 +178,7 @@ body {
   opacity: .62;
 }
 @media print { #mesure { display: none; } }
+body.ecran-entretien #mesure { opacity: 0; }
 
 /* Archivo pour les titres et les grands nombres : elle a ete dessinee pour la
    signaletique, la lecture a distance et les releves d'appareil. C'est la
@@ -569,6 +575,8 @@ p.vide {
   .e-ic { background: #ccc; border-color: #000; animation: none; transform: none; }
   .e-pt { background: #000; }
   .feed, .wave, .wave-ctl, .row-actions, nav.nav, .pouls { display: none; }
+  .axe { margin-inline: 0; }
+  .axe-bord, .axe-fin, .axe .progress::before { display: none; }
   .estim, .reg-l { break-inside: avoid; }
   a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 10px; }
 }
@@ -631,11 +639,13 @@ a.act { text-decoration: none; }
 
 .tour {
   position: relative; padding-left: var(--e3);
-  margin: var(--e5) 0 var(--e4); max-width: 38ch;
+  margin: var(--e5) 0 0; max-width: 38ch;
 }
 .tour::before {
-  content: ""; position: absolute; left: 0; top: .3em; bottom: .3em;
-  width: 1.5px; background: var(--accent); opacity: .7;
+  content: ""; position: absolute; left: 0; top: .3em;
+  bottom: calc(-1 * var(--e4));
+  width: var(--trait); background: var(--accent); opacity: .45;
+  transition: opacity .5s var(--ease);
 }
 /* Un consentement se distingue par la couleur de son filet, pas par un cadre :
    le rouge est reserve a la mesure, et un consentement n'en est pas une. */
@@ -662,7 +672,7 @@ a.act { text-decoration: none; }
 .speech.small { font-size: 1.15rem; }
 
 @media (max-width: 620px) {
-  .tour { max-width: none; padding-left: var(--e2); margin: var(--e4) 0 var(--e3); }
+  .tour { max-width: none; padding-left: var(--e2); margin: var(--e4) 0 0; }
 }
 
 /* LES TROIS ETATS DE L'APPEL, ECRITS EN TOUTES LETTRES
@@ -947,3 +957,121 @@ label.champ {
   letter-spacing: .10em; text-transform: uppercase; color: var(--ink-faint);
   align-self: center;
 }
+
+/* ======================================================================
+   L'AXE DE MESURE
+   ----------------------------------------------------------------------
+   La ligne du site descend dans l'application et devient l'axe horizontal
+   de l'ecran d'entretien. Au dessus, ce que NDARA dit. Sur l'axe,
+   l'avancement. En dessous, ce que vous faites. La ligne est l'horizon
+   entre la parole recue et la reponse donnee, et cette separation est la
+   these du produit rendue en geometrie.
+
+   Ce que cela repare, et qui n'etait pas qu'une affaire de gout : la
+   barre d'avancement etait un rail decoratif de 3 px pose en haut d'un
+   panneau, et le rouge y servait sans mesurer rien. Un avancement dans un
+   questionnaire EST une quantite mesuree : le rouge y a donc droit, et la
+   signature de la marque cesse d'etre un ornement pour devenir un
+   instrument. Rien d'autre ne prend le rouge sur cet ecran.
+   ====================================================================== */
+
+/* Trois cellules : gouttiere, colonne de lecture, gouttiere. Les gouttieres
+   portent le trait plein, la colonne porte la piste graduee. C'est la meme
+   geometrie que #mesure, rendue par une grille au lieu d'un degrade. */
+.axe {
+  display: grid;
+  grid-template-columns:
+    1fr
+    min(var(--colonne), calc(100% - var(--gouttiere) * 2))
+    1fr;
+  align-items: center;
+  margin-inline: calc(50% - 50vw);
+  margin-block: var(--e4) 0;
+}
+.axe-bord {
+  height: var(--trait); background: var(--accent);
+  opacity: var(--axe-repos); transition: opacity .5s var(--ease);
+}
+
+.axe .progress, .axe-piste {
+  position: relative; height: var(--trait); background: var(--line);
+  border-radius: 0; overflow: visible;   /* le curseur survole la piste */
+  margin: 0;
+}
+
+/* LES GRADUATIONS
+   Dix divisions sous la piste, plus deux montants aux extremites. Elles ne
+   portent aucun chiffre, et c'est voulu : ce qui se lit est une position,
+   pas un pourcentage. Un statisticien lit deja toutes ses echelles ainsi. */
+.axe .progress::before, .axe-piste::before {
+  content: ""; position: absolute; left: 0; right: 0; top: calc(100% + 3px);
+  height: 5px; pointer-events: none; opacity: .85;
+  background-image:
+    linear-gradient(var(--ink-faint), var(--ink-faint)),
+    linear-gradient(var(--ink-faint), var(--ink-faint)),
+    repeating-linear-gradient(90deg, var(--line) 0 1px, transparent 1px 10%);
+  background-size: 1px 5px, 1px 5px, 100% 3px;
+  background-position: 0 0, 100% 0, 0 0;
+  background-repeat: no-repeat, no-repeat, repeat-x;
+}
+
+/* LE SEGMENT PARCOURU, ET SON CURSEUR
+   #bar recevait deja sa largeur en pourcentage depuis app.js. Il ne change
+   pas de contrat, il change de sens. Son extremite porte le carre plein de
+   12 px du bouton du site vitrine : le meme objet, dans le meme rouge, a la
+   meme taille que celui que le jury avait sous le doigt en cliquant. */
+.axe #bar {
+  position: relative; display: block; height: 100%; width: 0;
+  background: var(--accent); transition: width .55s var(--ease-out);
+}
+.axe #bar::after, .axe-tete {
+  content: ""; position: absolute; top: 50%;
+  width: var(--carre); height: var(--carre); background: var(--accent);
+}
+.axe #bar::after { right: 0; transform: translate(50%, -50%); }
+.axe-tete { left: 0; display: block; transform: translate(-50%, -50%); }
+
+/* L'ONDE D'ECOUTE
+   Le seul mouvement de tout l'ecran. Elle n'est pas decorative : elle
+   repond a la question qu'un ministere pose en premier a un produit vocal,
+   celle de savoir si le micro est ouvert, et elle y repond a l'endroit ou
+   l'oeil est deja pose. L'animation ne touche que background-position :
+   aucune reprise de mise en page. */
+.axe .progress::after {
+  content: ""; position: absolute; inset: -1.25px 0;
+  pointer-events: none; opacity: 0;
+  background-image: linear-gradient(90deg,
+      rgba(213, 58, 27, 0) 0%, rgba(213, 58, 27, .55) 42%,
+      rgba(213, 58, 27, .95) 50%, rgba(213, 58, 27, .55) 58%,
+      rgba(213, 58, 27, 0) 100%);
+  background-size: 26% 100%; background-repeat: no-repeat;
+  background-position: -30% 0;
+  transition: opacity .35s var(--ease);
+}
+body.ecoute .axe .progress::after { opacity: 1; animation: onde 2.4s linear infinite; }
+@keyframes onde {
+  from { background-position: -30% 0; }
+  to   { background-position: 130% 0; }
+}
+
+/* LES TROIS ETATS DE L'APPEL DEVIENNENT TROIS ETATS DE LA LIGNE
+   Ils ne pilotaient qu'un point de 7 px. Ils pilotent maintenant la
+   presence de la ligne entiere, visible d'un bout a l'autre de la fenetre
+   et jusqu'au fond d'une salle de deliberation. */
+body.parle  .axe-bord { opacity: var(--axe-parle); }
+body.ecoute .axe-bord { opacity: var(--axe-ecoute); }
+body.parle  .tour::before { opacity: 1; }
+
+.axe-pied {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--e3); margin-top: var(--e2);
+}
+.axe-fin {
+  font-family: var(--mono); font-weight: 300; font-size: var(--t-etiquette);
+  letter-spacing: .10em; text-transform: uppercase; color: var(--ink-faint);
+}
+.axe-pied .etat { margin: 0; }
+.etat-repos { color: var(--ink-faint); }
+
+/* L'accueil et l'entretien n'ont pas de boite : un appel n'en a pas. */
+#screen-home.panel { background: transparent; border: 0; padding: 0; }
