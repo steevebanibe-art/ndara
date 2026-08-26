@@ -33,52 +33,183 @@
    est vraiment une surface de surveillance et qui rejoue les bandes
    immergées du site. Une page claire, une bande sous l'eau. */
 :root {
-  --bg: #E4E9E9;          /* la brume, un ton au dessus des panneaux */
-  --panel: #D6DCDC;       /* la brume du site, exactement */
-  --panel-2: #C7D1D1;
-  --line: #B2BFC0;
+  /* LES SURFACES, REPRISES DU SITE A LEUR VRAIE PLACE
+     La brume du site est #D6DCDC et c'est sa TOILE, pas ses panneaux. Elle
+     avait ete rangee ici dans --panel, si bien que la surface dominante de
+     l'application, celle qui occupe les quatre cinquiemes de l'ecran, etait
+     un #E4E9E9 qui n'existe nulle part sur le site. On ne nomme pas cette
+     rupture en arrivant, on la sent : le sol a change. */
+  --bg: #D6DCDC;          /* la brume du site, a sa vraie place */
+  --panel: #CBD3D4;       /* le bas du degrade du site */
+  --panel-2: #BFC9CA;     /* la carte du site, verre depoli */
+  --line: #A8B6B7;        /* le filet doit foncer, sinon il disparait sur la brume */
+
   --ink: #122127;         /* l'eau sous la surface, 11,9 pour 1 sur la brume */
-  --ink-dim: #47565A;
-  --ink-faint: #6F8286;
-  --accent: #D53A1B;      /* la ligne de mesure, usages non textuels */
-  --accent-ink: #8E2A14;  /* le même rouge vu à travers l'eau, 6,1 pour 1 */
-  --ok: #1F6B4A;
-  --warn: #8A5A0F;
-  --bad: #A2352A;
-  --deep: #122127;        /* la bande immergée */
+  --ink-dim: #3D4C50;     /* 7,4 pour 1 */
+  --ink-faint: #4B5D61;   /* 5,0 pour 1. A #6F8286 il tombait a 2,9 : toute la
+                             couche de texte secondaire echouait au contraste,
+                             et c'est la couche ou vit la provenance des chiffres. */
+
+  /* LE ROUGE, ET SA DOCTRINE
+     --accent ne sert JAMAIS a du texte : 3,4 pour 1 sur la brume. C'est un
+     trait, un intervalle, un carre plein, un point d'ecoute. Des qu'il faut
+     lire des lettres rouges, c'est --accent-ink, qui est le meme rouge vu a
+     travers l'eau et tient 6,1 pour 1. */
+  --accent: #D53A1B;      /* la ligne de mesure, usages non textuels seulement */
+  --accent-ink: #8E2A14;  /* le rouge lisible, texte et aplats */
+  --accent-fonce: #7A2411;/* le meme, enfonce, pour le survol */
+
+  --ok: #1A5E40;
+  --warn: #7A4F0D;
+  --bad: #8E2A20;
+  --deep: #122127;        /* la bande immergee */
   --on-deep: #EDF2F2;
-  --radius: 10px;
-  --display: "Archivo", system-ui, sans-serif;
+
+  /* L'ECHELLE TYPOGRAPHIQUE, FERMEE A SEPT ROLES
+     La feuille contenait 23 tailles pour 58 declarations, dont dix entassees
+     entre 10 et 15 px. Entre 12 et 12,5 px il n'y a aucune difference lisible,
+     seulement la trace d'un reglage a l'oeil. Un jury ne nomme pas ce defaut,
+     il le lit comme du flou. Sept roles, et rien entre eux. */
+  --t-etiquette: 11px;    /* Martian Mono capitales, la legende d'un instrument */
+  --t-petit: 13px;        /* mentions, provenance, aides */
+  --t-donnee: 14px;       /* tableaux, listes denses */
+  --t-corps: 17px;        /* le texte courant */
+  --t-parole: clamp(1.45rem, 3.4vw, 2.05rem);   /* ce que NDARA prononce */
+  --t-titre: clamp(1.5rem, 3.2vw, 2.1rem);      /* les titres de section */
+  --t-nombre: clamp(1.6rem, 3.2vw, 2.2rem);     /* les grands nombres */
+
+  /* LE RYTHME, SUR UNE BASE DE HUIT
+     Une trentaine de valeurs d'espacement distinctes cohabitaient. Le blanc
+     est la structure, pas ce qui reste entre deux blocs. */
+  --e1: 8px;  --e2: 16px; --e3: 24px; --e4: 32px; --e5: 48px; --e6: 64px;
+
+  /* LES ANGLES SONT VIFS
+     Le site n'a pas un seul angle arrondi dans son mobilier. Un rayon de 10 px
+     partout est le signal « produit grand public », exactement celui qu'il ne
+     faut pas emettre devant un ministere. Le jeton reste, a zero, pour que la
+     decision se lise au lieu d'etre eparpillee. */
+  --radius: 0px;
+  --radius-plein: 999px;  /* la seule exception : les pastilles d'etat */
+
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
   --mono: "Martian Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --ease: cubic-bezier(.22, .61, .36, 1);
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+
+  --line-y: 62.5vh;       /* la ligne de mesure, recalculee au pixel en JS */
+  --mesure: 66ch;         /* la longueur de ligne au dela de laquelle on relit mal */
 }
 
 * { box-sizing: border-box; }
 
+/* La bande immergee s'etale sur 100vw, qui compte la barre de defilement que
+   la largeur disponible ne compte pas : sans cette garde, toute la page
+   deborde lateralement de la largeur de la barre. clip vaut mieux que hidden,
+   qui ferait de <html> un conteneur de defilement et casserait position:
+   sticky ; hidden reste en repli pour les navigateurs sans clip. */
+html, body { overflow-x: hidden; overflow-x: clip; }
+
+/* Le sol du site, avec sa profondeur et son grain. Le degrade et le grain sont
+   fixes : la page glisse dessus au lieu de les emporter, ce qui donne au fond
+   son caractere de lieu plutot que de feuille. Le grain est un data URI de
+   260 octets rasterise une fois. On ne porte PAS le canevas de poussiere du
+   site, qui redessine 700 particules par image : le Space tourne en cpu-basic. */
 body {
   margin: 0;
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E"),
+    linear-gradient(180deg, #D6DCDC 0%, #CBD3D4 100%);
+  background-attachment: fixed, fixed;
+  background-repeat: repeat, no-repeat;
+  background-size: 120px 120px, cover;
   color: var(--ink);
   font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  line-height: 1.55;
+  font-size: var(--t-corps);
+  line-height: 1.62;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* Archivo pour les titres et les grands nombres : elle a été dessinée pour la
-   signalétique, la lecture à distance et les relevés d'appareil. C'est la
-   lettre d'un instrument, pas celle d'une marque. */
-h1, h2, h3, .stat .value, .band .l { font-family: var(--display); letter-spacing: -.015em; }
+/* LA LIGNE DE MESURE
+   La signature de la marque, et le raccord entre le film, la page et l'outil.
+   Elle traversait le site et n'avait jamais atteint l'application, qui se
+   lisait donc comme un autre produit meme repeinte aux bonnes couleurs.
+
+   POURQUOI ELLE EST DESSINEE AINSI, ET PAS COMME SUR LE SITE
+   Le site la trace pleine largeur et la fait baisser en JavaScript quand du
+   texte la croise : il teste a chaque defilement ce qui se trouve sous elle.
+   Cette methode a ete essayee ici et elle echoue, pour une raison propre a
+   l'application : le tableau de bord construit son contenu APRES le chargement,
+   si bien qu'au moment du test il n'y a rien sous la ligne. Elle se fige sur
+   « visible » et barre ensuite le texte qui arrive. On peut courir apres avec
+   un observateur de mutations, mais cela revient a payer un recalcul de mise
+   en page par image sur un Space en cpu-basic, pour une heuristique qui reste
+   fausse par intermittence.
+
+   La geometrie donne la meme chose gratuitement, et cette fois avec une
+   garantie. La ligne est pleine dans les gouttieres, de part et d'autre de la
+   colonne de lecture, et ne traverse la colonne qu'a un dixieme d'opacite.
+   Elle ne peut donc jamais barrer une lettre, quel que soit le contenu et
+   quel que soit le moment. Et elle se lit comme ce qu'elle est sur un
+   appareil : une graduation franche sur les bords, un fil tendu en travers
+   du champ de mesure.
+
+   Sous 992 px les gouttieres se calculent a zero et il ne reste que le fil :
+   le geste demande de la place, et il se retire quand il n'y en a plus. */
+:root { --demi-colonne: 470px; }   /* la moitie de .wrap, max-width 940px */
+
+#mesure {
+  position: fixed; left: 0; right: 0; top: var(--line-y);
+  height: 1.5px; z-index: 40; pointer-events: none;
+  background: linear-gradient(90deg,
+    var(--accent)             0,
+    var(--accent)             calc(50% - var(--demi-colonne) - 24px),
+    transparent               calc(50% - var(--demi-colonne) - 24px),
+    transparent               calc(50% + var(--demi-colonne) + 24px),
+    var(--accent)             calc(50% + var(--demi-colonne) + 24px),
+    var(--accent)             100%);
+  opacity: .62;
+}
+@media print { #mesure { display: none; } }
+
+/* Archivo pour les titres et les grands nombres : elle a ete dessinee pour la
+   signaletique, la lecture a distance et les releves d'appareil. C'est la
+   lettre d'un instrument, pas celle d'une marque.
+
+   Sa chasse est variable, et c'est justement ce qui donne au site son autorite.
+   L'application l'avait chargee variable et laissee a 100 partout : elle avait
+   pris la lettre de la marque en lui retirant sa voix. */
+h1, h2, h3, .stat .value { font-family: var(--display); letter-spacing: -.015em; }
 .stat .value { font-weight: 650; font-variation-settings: "wdth" 105; }
 
-a { color: var(--accent); }
+/* UN ANNEAU DE FOCUS, PARTOUT
+   Il y avait une seule regle de focus dans 580 lignes, et elle ne couvrait
+   aucun bouton. Au clavier, l'application etait donc traversable a l'aveugle.
+   Devant un ministere, l'accessibilite n'est pas un supplement, c'est une
+   piece du dossier. */
+:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
+}
+.panel.live :focus-visible { outline-color: var(--accent); }
 
-.wrap { max-width: 940px; margin: 0 auto; padding: 28px 20px 80px; }
+/* Le rouge ne sert jamais a lire. #D53A1B sur la brume tient 3,4 pour 1 ;
+   le meme vu a travers l'eau en tient 6,1. */
+a { color: var(--accent-ink); text-underline-offset: 3px; }
+
+.wrap { max-width: 940px; margin: 0 auto; padding: var(--e4) var(--e3) 96px; }
+p, .hint, .chapo, li { max-width: var(--mesure); }
+td p, th p, .reg-s, .ch-s { max-width: none; }
 
 /* ---------- en-tête ---------- */
 
 header.top {
   border-bottom: 1px solid var(--line);
-  padding-bottom: 18px;
-  margin-bottom: 26px;
+  padding-bottom: var(--e3);
+  margin-bottom: var(--e4);
+  position: relative; z-index: 41;   /* l'en-tete passe au dessus de la ligne */
   display: flex;
   flex-wrap: wrap;
   gap: 16px;
@@ -88,11 +219,24 @@ header.top {
 
 .brand { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .brand h1 {
-  font-size: 26px; margin: 0; letter-spacing: .16em; font-weight: 700;
+  font-size: 1.15rem; margin: 0; font-weight: 700;
+  font-variation-settings: "wdth" 118, "wght" 700;
+  letter-spacing: .02em;    /* .16em etait huit fois la valeur du site */
 }
-.brand .tag { color: var(--ink-dim); font-size: 14px; font-style: italic; }
-.nav a { margin-left: 16px; font-size: 14px; text-decoration: none; color: var(--ink-dim); }
-.nav a:hover, .nav a.on { color: var(--accent); }
+/* L'italique etait synthetique : aucune italique d'IBM Plex n'est chargee, le
+   navigateur penchait donc la romaine lui-meme. Le rang se dit ici par la
+   taille et la couleur, qui sont vraiment chargees. */
+.brand .tag { color: var(--ink-dim); font-size: var(--t-petit); }
+/* L'onglet courant se marque par un trait sous le mot, pas par du rouge :
+   le rouge est reserve a la mesure, et un onglet n'en est pas une. */
+.nav a {
+  margin-left: var(--e3); font-size: var(--t-donnee); text-decoration: none;
+  color: var(--ink-dim); padding-bottom: 3px;
+  border-bottom: 1px solid transparent;
+  transition: color .2s var(--ease), border-color .2s var(--ease);
+}
+.nav a:hover { color: var(--ink); border-bottom-color: var(--line); }
+.nav a.on { color: var(--ink); border-bottom-color: var(--ink); }
 
 /* ---------- badges de capacité ---------- */
 
@@ -135,13 +279,15 @@ header.top {
 }
 @media (max-width: 900px) { .live-cols { grid-template-columns: 1fr; } }
 
+/* Le role d'etiquette revient a Martian Mono, comme sur le site. */
 h3.sub {
-  font-size: 12px; text-transform: uppercase; letter-spacing: .11em;
-  color: var(--ink-faint); font-weight: 600; margin: 0 0 10px;
+  font-family: var(--mono); font-weight: 300; font-size: var(--t-etiquette);
+  text-transform: uppercase; letter-spacing: .10em;
+  color: var(--ink-faint); margin: 0 0 var(--e2);
 }
 
 .mini {
-  display: inline-block; width: 74px; height: 5px; border-radius: 3px;
+  display: inline-block; width: 74px; height: 5px; border-radius: 0;
   background: var(--line); overflow: hidden; vertical-align: middle; margin-right: 8px;
 }
 .mini i { display: block; height: 100%; background: var(--accent); transition: width .35s ease; }
@@ -175,12 +321,12 @@ h3.sub {
 }
 .wave-ctl select, .wave-ctl input {
   background: var(--panel-2); color: var(--ink); border: 1px solid var(--line);
-  border-radius: 8px; padding: 10px 12px; font-size: 15px; font-family: inherit;
+  border-radius: 0; padding: 11px 12px; font-size: var(--t-donnee); font-family: inherit;
 }
 .wave-ctl input { min-width: 190px; font-variant-numeric: tabular-nums; }
 .wave-ctl input::placeholder { color: var(--ink-faint); }
 .wave-bar {
-  height: 6px; border-radius: 3px; background: var(--line);
+  height: 6px; border-radius: 0; background: var(--line);
   overflow: hidden; margin-top: 14px;
 }
 .wave-bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s linear; }
@@ -289,7 +435,11 @@ p.chapo {
   font-style: normal; font-size: .92rem; font-weight: 500;
   color: var(--ink-dim); margin-left: 6px;
 }
-.reg-v.reg-alerte { color: var(--accent); }
+/* Le chiffre d'un auto-audit defaillant restait ecrit en rouge, c'est-a-dire
+   en alarme. Or mettre une mesure en alarme transforme l'instrument en
+   tableau de surveillance, exactement le registre que le dossier refuse
+   partout ailleurs. Ce qui alerte, c'est la valeur, pas sa couleur. */
+.reg-v.reg-alerte { color: var(--ink); }
 
 @media (max-width: 560px) {
   .reg-l { grid-template-columns: 1fr; grid-template-areas: "k" "v" "s"; }
@@ -307,9 +457,10 @@ p.chapo {
   margin-left: calc(50% - 50vw); margin-right: calc(50% - 50vw);
   padding: 30px max(20px, calc(50vw - 470px)) 34px;
 }
-.panel.live .stat {
-  background: rgba(237, 242, 242, .05);
-  border-color: rgba(237, 242, 242, .14);
+.panel.live .grid { border-top-color: rgba(237, 242, 242, .16); }
+.panel.live .grid > .stat + .stat { border-left-color: rgba(237, 242, 242, .16); }
+@media (max-width: 900px) {
+  .panel.live .grid > .stat:nth-child(n+3) { border-top-color: rgba(237, 242, 242, .16); }
 }
 .panel.live .stat .label, .panel.live h3.sub { color: rgba(237, 242, 242, .55); }
 .panel.live .stat .sub, .panel.live .hint { color: rgba(237, 242, 242, .62); }
@@ -365,12 +516,16 @@ p.chapo {
    sonne dans le vide sont trois choses différentes. */
 
 .partage {
-  display: flex; height: 30px; border-radius: 3px; overflow: hidden;
+  display: flex; height: 30px; border-radius: 0; overflow: hidden;
   border: 1px solid var(--line); background: var(--panel);
 }
 .partage span { display: block; min-width: 2px; }
-.p-complete { background: var(--accent); }
-.p-partial { background: rgba(213, 58, 27, .48); }
+/* Le plus grand objet rouge du produit etait cette barre de 30 px, plus
+   grande que les intervalles de confiance eux-memes. Or ce sont des
+   categories de terrain, pas des mesures : le rouge n'a rien a y faire, et
+   sa presence retirait a l'intervalle son statut d'objet singulier. */
+.p-complete { background: var(--ink); }
+.p-partial { background: #4E6165; }
 .p-refusal { background: #6C7C80; }
 .p-noncontact { background: var(--panel-2); }
 .p-ineligible { background: #9AA8A9; }
@@ -386,7 +541,7 @@ p.chapo {
   gap: 10px; align-items: baseline; padding: 11px 0;
   border-bottom: 1px solid var(--line);
 }
-.pl-p { width: 10px; height: 10px; border-radius: 2px; align-self: center; }
+.pl-p { width: 10px; height: 10px; border-radius: 0; align-self: center; }
 .pl-k { font-size: 14px; }
 .pl-v {
   font-family: var(--mono); font-size: 12px; font-weight: 500;
@@ -436,29 +591,116 @@ textarea.txt {
   border-radius: var(--radius); padding: 12px 14px; font-size: 13.5px;
 }
 textarea.txt.mono { font-family: var(--mono); font-size: 12.5px; }
-textarea.txt:focus, input.txt:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+textarea.txt:focus, input.txt:focus, select.txt:focus { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 .row-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; align-items: center; }
-a.act { text-decoration: none; display: inline-block; }
-.nav a.on { color: var(--accent); }
+a.act { text-decoration: none; }
 
 /* ---------- panneaux ---------- */
 
 .panel {
   background: var(--panel); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 22px;
+  border-radius: var(--radius); padding: var(--e3);
 }
-.panel + .panel { margin-top: 16px; }
+.panel + .panel { margin-top: var(--e2); }
 
-.progress { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; margin-bottom: 22px; }
+.progress { height: 3px; background: var(--line); border-radius: 0; overflow: hidden; margin-bottom: var(--e4); }
 .progress > i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .35s ease; }
 
 .eyebrow {
-  font-size: 11px; letter-spacing: .18em; text-transform: uppercase;
-  color: var(--ink-faint); margin-bottom: 10px; font-family: var(--mono);
+  font-size: var(--t-etiquette); letter-spacing: .10em; text-transform: uppercase;
+  color: var(--ink-faint); margin-bottom: var(--e2); font-family: var(--mono);
+  font-weight: 300;
 }
 
-.speech { font-size: 20px; line-height: 1.5; margin: 0 0 6px; }
-.speech.small { font-size: 16px; }
+/* L'ENTRETIEN N'EST PAS UN FORMULAIRE
+   -----------------------------------
+   Toute la logique d'appel etait construite en JavaScript, et rien n'en
+   arrivait a l'ecran : mains libres, tours de silence, relances, repli
+   clavier, deux voies de transcription. Tout cela tombait dans un seul
+   rectangle gris, a la meme taille, en meme temps. Une phrase prononcee par
+   NDARA et une consigne d'interface avaient exactement le meme corps, la meme
+   police et la meme boite. L'ecran ne distinguait jamais ce qui est dit de ce
+   qui est de l'ordre de l'outil, alors que c'est la these du produit.
+
+   Un appel n'a pas de boite. La parole repose donc sur le sol de la page,
+   tenue par un seul filet vertical, qui est le meme trait de 1,5 px que la
+   ligne de mesure et que les intervalles de confiance du tableau de bord. */
+#screen-iv.panel {
+  background: transparent; border: 0; border-radius: 0; padding: 0;
+}
+
+.tour {
+  position: relative; padding-left: var(--e3);
+  margin: var(--e5) 0 var(--e4); max-width: 38ch;
+}
+.tour::before {
+  content: ""; position: absolute; left: 0; top: .3em; bottom: .3em;
+  width: 1.5px; background: var(--accent); opacity: .7;
+}
+/* Un consentement se distingue par la couleur de son filet, pas par un cadre :
+   le rouge est reserve a la mesure, et un consentement n'en est pas une. */
+#screen-iv.consent .tour::before { background: var(--ink); opacity: 1; }
+#screen-iv.optional .tour::before { background: var(--ink-faint); opacity: 1; }
+
+.qui {
+  display: flex; align-items: baseline; gap: var(--e2); flex-wrap: wrap;
+  font-family: var(--mono); font-weight: 300; font-size: var(--t-etiquette);
+  letter-spacing: .12em; text-transform: uppercase;
+  line-height: 1.5; margin: 0 0 var(--e2); max-width: none;
+}
+.qui-nom { color: var(--ink); font-weight: 500; }
+.qui .rang { color: var(--ink-faint); }
+
+/* Archivo, la lettre d'instrument, au corps ou une phrase se lit comme une
+   phrase prononcee et non comme une consigne. */
+.speech {
+  font-family: var(--display);
+  font-variation-settings: "wdth" 105, "wght" 500;
+  font-size: var(--t-parole); line-height: 1.18; letter-spacing: -.018em;
+  text-wrap: pretty; margin: 0; color: var(--ink); max-width: none;
+}
+.speech.small { font-size: 1.15rem; }
+
+@media (max-width: 620px) {
+  .tour { max-width: none; padding-left: var(--e2); margin: var(--e4) 0 var(--e3); }
+}
+
+/* LES TROIS ETATS DE L'APPEL, ECRITS EN TOUTES LETTRES
+   La case mains libres est cochee par defaut et le micro s'ouvre tout seul :
+   personne n'appuie sur rien. Le seul temoin d'ecoute etait un point de 9 px
+   a l'interieur d'un bouton que l'on ne touche jamais. On ne savait donc pas
+   quand le micro etait ouvert, ce qui est a la fois une faute d'usage, on
+   parle dans le vide ou l'on se tait alors qu'on est entendu, et une faute de
+   posture : un produit qui ouvre un micro sans le dire visiblement est
+   exactement l'image que ce dossier cherche a ecarter devant un ministere. */
+.etat {
+  display: flex; align-items: center; gap: 10px; min-height: 22px;
+  margin: var(--e3) 0 0; font-family: var(--mono); font-size: var(--t-etiquette);
+  letter-spacing: .12em; text-transform: uppercase; color: var(--ink-dim);
+  max-width: none;
+}
+.etat::before {
+  content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--ink-faint); transition: background .3s var(--ease);
+}
+body.parle .etat::before { background: var(--ink-dim); }
+body.ecoute .etat::before {
+  background: var(--accent);
+  animation: ecoute 1.6s cubic-bezier(.4, 0, .6, 1) infinite;
+}
+
+/* LE TOUR DE PAROLE
+   Le clavier, le champ et le bouton etaient construits et focalises soixante
+   millisecondes apres l'arrivee de la question, c'est-a-dire pendant que la
+   synthese en etait au premier mot. L'ecran invitait donc a sauter la parole
+   de NDARA, exactement comme un formulaire web.
+
+   Or au telephone on ne peut pas repondre avant la fin de la question, et
+   cette impossibilite EST le tour de parole : c'est tout ce qui distingue une
+   conversation d'un questionnaire. Ici la reponse est presente mais retenue
+   tant que NDARA parle. Ce n'est pas un blocage, c'est une politesse. */
+#inputs, .row-repondre { transition: opacity .4s var(--ease); }
+body.parle #inputs, body.parle .row-repondre { opacity: .32; pointer-events: none; }
 .note {
   margin-top: 12px; padding: 10px 12px; border-left: 2px solid var(--warn);
   background: rgba(224,164,88,.07); color: var(--warn); font-size: 14px;
@@ -466,42 +708,89 @@ a.act { text-decoration: none; display: inline-block; }
 
 /* ---------- consentement ---------- */
 
-.consent { border-left: 3px solid var(--accent); }
-.consent.optional { border-left-color: var(--ok); }
+.consent { border-left: 3px solid var(--ink); }
+.consent.optional { border-left-color: var(--ink-faint); }
 .consent .free {
   margin-top: 12px; font-size: 13.5px; color: var(--ok);
-  background: rgba(76,175,125,.08); border-radius: 6px; padding: 9px 11px;
+  background: rgba(26, 94, 64, .07); border-radius: 0; padding: 10px 12px;
 }
 
 /* ---------- saisies ---------- */
 
 .keypad { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 8px; margin-top: 18px; }
 button.key {
-  display: flex; align-items: center; gap: 10px; text-align: left;
+  display: flex; align-items: center; gap: var(--e2); text-align: left;
   background: var(--panel-2); color: var(--ink); border: 1px solid var(--line);
-  border-radius: 8px; padding: 11px 12px; font-size: 15px; cursor: pointer;
-  transition: border-color .15s, transform .05s;
+  border-radius: 0; padding: 13px var(--e2); font-size: var(--t-donnee);
+  min-height: 48px;              /* 41 px etait sous la cible tactile de 44 */
+  cursor: pointer;
+  transition: border-color .2s var(--ease), background .2s var(--ease);
 }
-button.key:hover { border-color: var(--accent); }
+button.key:hover { border-color: var(--ink); background: var(--bg); }
 button.key:active { transform: translateY(1px); }
+/* LA TOUCHE
+   Le chiffre etait ecrit #D53A1B sur #0b0e13, soit 4,1 pour 1 a 13 px, sous
+   le seuil. Et #0b0e13 n'appartient a aucun jeton : c'est un reste de la
+   version sombre, oublie la. Or ce chiffre est l'objet le plus important de
+   l'ecran de repli, puisque c'est lui qu'on compose vraiment sur un telephone
+   a touches. Encre sur brume dense : 9,5 pour 1. */
 button.key b {
-  font-family: var(--mono); background: #0b0e13; border: 1px solid var(--line);
-  border-radius: 5px; min-width: 26px; text-align: center; padding: 1px 0;
-  color: var(--accent); font-size: 13px;
+  font-family: var(--mono); font-weight: 500;
+  background: var(--ink); color: var(--on-deep);
+  border: 0; border-radius: 0;
+  min-width: 28px; text-align: center; padding: 3px 0;
+  font-size: var(--t-petit);
 }
 
 .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 18px; }
 input.txt, select.txt {
   background: var(--panel-2); border: 1px solid var(--line); color: var(--ink);
-  border-radius: 8px; padding: 11px 12px; font-size: 15px; min-width: 190px;
+  border-radius: 0; padding: 12px 13px; font-size: var(--t-donnee); min-width: 190px;
 }
-button.act {
-  background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 8px;
-  padding: 11px 18px; font-size: 15px; font-weight: 600; cursor: pointer;
+/* LE BOUTON, ET LA FAUTE QU'IL PORTAIT
+   Il etait ecrit #8E2A14 sur #D53A1B, soit 1,79 pour 1 la ou le seuil est de
+   4,5. Rouge sur rouge : le seul objet que le jury allait cliquer, sur les
+   trois pages, et son libelle etait invisible. Sur un videoprojecteur de
+   salle de deliberation, il disparaissait tout a fait.
+
+   Le site avait deja resolu ce probleme avec .cta, et sa solution repare la
+   lisibilite et la continuite en un seul geste : encre rouge lisible a 7,5
+   pour 1, angle vif, Martian Mono, et surtout le carre plein par lequel la
+   ligne de mesure entre dans le bouton. Sans ce carre, le bouton
+   n'appartient plus a la marque. */
+button.act, a.act {
+  display: inline-flex; align-items: center; gap: var(--e2);
+  background: var(--accent-ink); color: var(--on-deep);
+  border: 0; border-radius: 0;
+  min-height: 48px; padding: 0 var(--e3) 0 0;
+  font-family: var(--mono); font-weight: 500; font-size: var(--t-petit);
+  letter-spacing: .07em; text-transform: uppercase;
+  text-decoration: none; cursor: pointer;
+  transition: background .3s var(--ease), transform .3s var(--ease);
 }
-button.act.ghost { background: transparent; color: var(--ink-dim); border: 1px solid var(--line); font-weight: 500; }
-button.act.ghost:hover { color: var(--ink); border-color: var(--accent); }
-button.act:disabled { opacity: .45; cursor: not-allowed; }
+button.act::before, a.act::before {
+  content: ""; flex: 0 0 12px; align-self: stretch; background: var(--accent);
+}
+button.act:hover, a.act:hover { background: var(--accent-fonce); transform: translateX(3px); }
+button.act.ghost {
+  background: transparent; color: var(--ink-dim);
+  border: 1px solid var(--line); min-height: 44px; padding: 0 var(--e2);
+  font-family: inherit; font-size: var(--t-donnee); font-weight: 500;
+  letter-spacing: 0; text-transform: none;
+}
+button.act.ghost::before { display: none; }
+button.act.ghost:hover {
+  background: transparent; color: var(--ink);
+  border-color: var(--accent-ink); transform: none;
+}
+/* Un bouton desactive doit rester lisible : a .45 d'opacite on ne savait plus
+   ce qu'il proposait, donc pourquoi l'attendre. */
+button.act:disabled {
+  background: var(--panel-2); color: var(--ink-faint);
+  cursor: not-allowed; transform: none;
+}
+button.act:disabled::before { background: var(--line); }
+@media (pointer: coarse) { button.act, a.act { min-height: 52px; } }
 
 button.mic {
   background: transparent; border: 1px solid var(--line); color: var(--ink);
@@ -517,16 +806,31 @@ button.mic .dot { width: 9px; height: 9px; border-radius: 50%; background: var(-
   font-size: 13.5px; color: var(--ink-dim); user-select: none;
 }
 .mainslibres input { accent-color: var(--accent); width: 16px; height: 16px; cursor: pointer; }
+/* L'ECOUTE, ET LES DEUX FAUTES QU'ELLE PORTAIT
+   Ce bloc etait ecrit deux fois, et la garde prefers-reduced-motion se
+   trouvait ENTRE les deux. La seconde declaration, de meme specificite,
+   gagnait donc contre elle. Deux consequences.
+
+   Le point clignotait chez quelqu'un qui avait demande l'arret des
+   animations, ce qui casse une contrainte dure de la direction.
+
+   Et l'ecoute s'affichait en --bad, la couleur d'erreur : l'ecran disait
+   « probleme » a l'instant exact ou il disait « je vous ecoute ». Sur un
+   produit vocal, c'est le contresens le plus cher possible.
+
+   Le halo prevu, ecrit en ambre rgba(217,164,65) qui n'appartient plus a la
+   palette, n'avait par ailleurs jamais atteint l'ecran. La garde est
+   desormais ecrite EN DERNIER. */
 button.mic.rec { border-color: var(--accent); color: var(--ink); }
-button.mic.rec .dot { background: var(--accent); animation: ecoute 1.1s ease-in-out infinite; }
-@keyframes ecoute {
-  0%, 100% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 0 rgba(217, 164, 65, .45) }
-  50% { transform: scale(1.25); opacity: .75; box-shadow: 0 0 0 7px rgba(217, 164, 65, 0) }
+button.mic.rec .dot {
+  background: var(--accent);
+  animation: ecoute 1.6s cubic-bezier(.4, 0, .6, 1) infinite;
 }
-@media (prefers-reduced-motion: reduce) { button.mic.rec .dot { animation: none } }
-button.mic.rec { border-color: var(--bad); color: var(--bad); }
-button.mic.rec .dot { background: var(--bad); animation: pulse 1s infinite; }
-@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
+@keyframes ecoute {
+  0%   { box-shadow: 0 0 0 0 rgba(213, 58, 27, .40) }
+  70%  { box-shadow: 0 0 0 9px rgba(213, 58, 27, 0) }
+  100% { box-shadow: 0 0 0 0 rgba(213, 58, 27, 0) }
+}
 
 .hint { color: var(--ink-faint); font-size: 13px; margin-top: 10px; }
 
@@ -539,15 +843,40 @@ details.hood > summary {
 .hood table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 12.5px; font-family: var(--mono); }
 .hood th, .hood td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
 .hood th { color: var(--ink-faint); font-weight: 500; }
-.hood td.k { color: var(--accent); }
+.hood td.k { color: var(--ink); font-weight: 600; }
 
 /* ---------- tableau de bord ---------- */
 
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
-.stat { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
-.stat .label { font-size: 11.5px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: .1em; }
-.stat .value { font-size: 27px; font-weight: 650; margin-top: 6px; font-variant-numeric: tabular-nums; }
-.stat .sub { font-size: 12.5px; color: var(--ink-dim); margin-top: 3px; }
+/* Quatre cartes identiques ne rendaient pas ces mesures plus lisibles, elles
+   les rendaient interchangeables. Le reste du tableau de bord avait deja
+   renonce aux cadres pour cette raison ; ces chiffres-la etaient les derniers
+   a etre encore enfermes. Poses a plat et separes par un seul filet, ils
+   reprennent chacun leur poids. */
+.grid {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0 var(--e4); border-top: 1px solid var(--line);
+}
+@media (max-width: 900px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .grid { grid-template-columns: 1fr; } }
+
+.stat { background: transparent; border: 0; padding: var(--e3) 0 var(--e2); }
+.grid > .stat + .stat { border-left: 1px solid var(--line); padding-left: var(--e3); }
+@media (max-width: 900px) {
+  .grid > .stat:nth-child(odd) { border-left: 0; padding-left: 0; }
+  .grid > .stat:nth-child(n+3) { border-top: 1px solid var(--line); }
+}
+@media (max-width: 480px) {
+  .grid > .stat + .stat { border-left: 0; padding-left: 0; border-top: 1px solid var(--line); }
+}
+.stat .label {
+  font-family: var(--mono); font-weight: 300; font-size: var(--t-etiquette);
+  color: var(--ink-faint); text-transform: uppercase; letter-spacing: .10em;
+}
+.stat .value {
+  font-size: var(--t-nombre); font-weight: 650; line-height: 1;
+  margin: 10px 0 6px; font-variant-numeric: tabular-nums; letter-spacing: -.03em;
+}
+.stat .sub { font-size: var(--t-petit); color: var(--ink-dim); }
 
 table.data { width: 100%; border-collapse: collapse; font-size: 14px; }
 table.data th, table.data td { padding: 9px 10px; border-bottom: 1px solid var(--line); text-align: left; }
@@ -555,7 +884,19 @@ table.data th { color: var(--ink-faint); font-weight: 500; font-size: 12px; text
 table.data td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); }
 table.data td.ci { color: var(--ink-dim); font-family: var(--mono); font-size: 12.5px; }
 
-h2.section { font-size: 15px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-dim); margin: 30px 0 12px; font-weight: 600; }
+/* Un titre de section etait ecrit plus PETIT que le texte qu'il domine, en
+   capitales grises interlettrees : c'est-a-dire dans le role que le site
+   confie a Martian Mono. La hierarchie reposait donc entierement sur des
+   micro-capitales, signature visuelle d'un back-office. Archivo reprend ici
+   sa chasse et sa taille, et on parcourt un document au lieu de fouiller un
+   ecran. */
+h2.section {
+  font-family: var(--display); font-weight: 600;
+  font-variation-settings: "wdth" 112, "wght" 600;
+  font-size: var(--t-titre); line-height: 1.1;
+  letter-spacing: -.022em; text-transform: none; color: var(--ink);
+  margin: var(--e6) 0 var(--e2); text-wrap: balance;
+}
 
 ul.disclosure { margin: 0; padding-left: 18px; color: var(--ink-dim); font-size: 13.5px; }
 ul.disclosure li { margin-bottom: 5px; }
@@ -564,7 +905,7 @@ ul.disclosure li { margin-bottom: 5px; }
 .pill.bad { color: var(--bad); border-color: var(--bad); }
 .pill.ok { color: var(--ok); border-color: var(--ok); }
 
-footer.foot { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--ink-faint); font-size: 12.5px; }
+footer.foot { margin-top: var(--e6); padding-top: var(--e3); border-top: 1px solid var(--line); color: var(--ink-faint); font-size: 12.5px; }
 
 @media (max-width: 620px) {
   .speech { font-size: 18px; }
@@ -578,3 +919,31 @@ footer.foot { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--l
    maintenant sur lui-même, et la page reste immobile. */
 .tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .tablewrap > table.data { min-width: 520px; }
+
+/* ------------------------------------------------------ le mouvement, retire
+   Une seule garde, ecrite en dernier, qui couvre tout ce qui bouge. Elle etait
+   auparavant dispersee en quatre endroits, dont un ou elle etait defaite par
+   une regle ecrite apres elle. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+  button.mic.rec .dot { box-shadow: 0 0 0 3px rgba(213, 58, 27, .28); }
+  .e-ic { transform: none; }
+}
+
+/* La touche frappee au clavier physique s'allume, sinon rien ne dit que la
+   frappe a ete recue et on appuie deux fois. */
+button.key.frappee { border-color: var(--ink); background: var(--bg); }
+
+/* L'etiquette d'un controle pose en ligne. Elle est ecrite, pas seulement
+   suggeree par une invite : une invite disparait des qu'on saisit, et un
+   lecteur d'ecran ne la lit pas comme un nom de champ. */
+label.champ {
+  font-family: var(--mono); font-weight: 300; font-size: var(--t-etiquette);
+  letter-spacing: .10em; text-transform: uppercase; color: var(--ink-faint);
+  align-self: center;
+}

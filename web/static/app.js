@@ -69,6 +69,7 @@ function fillLanguages() {
   (q ? q.languages : ["fr"]).forEach((l) => {
     const o = document.createElement("option");
     o.value = l;
+    o.lang = l;
     o.textContent = { fr: "Français", en: "English", km: "ភាសាខ្មែរ" }[l] || l;
     sel.appendChild(o);
   });
@@ -135,17 +136,36 @@ const KIND_LABEL = {
   end: "Fin de l'entretien",
 };
 
+/* Les trois etats de l'appel. Ils existaient dans la logique et nulle part
+   sur la surface : en mains libres, personne n'appuie sur rien, et rien ne
+   disait quand le micro etait ouvert. */
+function etat(mode, texte) {
+  document.body.classList.toggle("parle", mode === "parle");
+  document.body.classList.toggle("ecoute", mode === "ecoute");
+  $("etat").textContent = texte;
+}
+
+/* Le lecteur d'ecran doit changer de voix en meme temps que NDARA. */
+function langueDuDocument() {
+  const l = state.language || "fr";
+  document.documentElement.lang = l;
+  $("speech").lang = l;
+}
+
 function render(prompt) {
   // Nouvelle question : le compteur de silences repart de zéro. Il ne compte
   // que les silences sur UNE étape, sinon un répondant lent finirait muet
   // pour tout le reste de l'entretien.
+  langueDuDocument();
   if (!state.step || state.step.step_id !== prompt.step_id) state.silences = 0;
   state.step = prompt;
   state.askedAt = performance.now();
   $("screen-home").style.display = "none";
   $("screen-iv").style.display = "";
 
-  $("bar").style.width = Math.round(prompt.progress * 100) + "%";
+  const pct = Math.round(prompt.progress * 100);
+  $("bar").style.width = pct + "%";
+  $("progress").setAttribute("aria-valuenow", String(pct));
   $("kind").textContent = KIND_LABEL[prompt.kind] || prompt.kind;
   $("speech").textContent = prompt.text;
 
@@ -163,7 +183,16 @@ function render(prompt) {
   $("mic-hint").textContent = prompt.allow_voice ? micHint() : "";
 
   $("hf-wrap").style.display = RECOG ? "" : "none";
-  speak(prompt, () => ecouterSiPossible(prompt));
+  etat("parle", "NDARA parle");
+  speak(prompt, () => {
+    // La reponse n'est rendue disponible qu'a la fin de la parole, et c'est
+    // seulement la que le focus arrive. Il partait auparavant soixante
+    // millisecondes apres l'affichage, donc pendant le premier mot.
+    etat(prompt.done ? "" : "attend", prompt.done ? "" : "À vous");
+    const libre = $("free");
+    if (libre) libre.focus();
+    ecouterSiPossible(prompt);
+  });
   drawHood();
 }
 
@@ -216,6 +245,7 @@ function buildInputs(prompt) {
       b.innerHTML = `<b>${o.dtmf ?? "·"}</b><span></span>`;
       b.querySelector("span").textContent = o.label;
       b.onclick = () => submit({ dtmf: o.dtmf });
+      if (o.dtmf != null) b.setAttribute("aria-label", "Touche " + o.dtmf + ", " + o.label);
       pad.appendChild(b);
     });
     box.appendChild(pad);
@@ -228,13 +258,13 @@ function buildInputs(prompt) {
     inp.placeholder = prompt.input_type === "number"
       ? `Montant${prompt.unit ? " en " + prompt.unit : ""}`
       : "Votre réponse";
+    inp.setAttribute("aria-label", prompt.text);
     inp.onkeydown = (e) => { if (e.key === "Enter") send(); };
     const b = document.createElement("button");
     b.className = "act";
     b.textContent = "Envoyer";
     b.onclick = send;
     box.appendChild(wrapRow(inp, b));
-    setTimeout(() => inp.focus(), 60);
 
     function send() {
       const v = inp.value.trim();
@@ -244,6 +274,7 @@ function buildInputs(prompt) {
     const inp = document.createElement("input");
     inp.className = "txt";
     inp.placeholder = "Dites oui ou non";
+    inp.setAttribute("aria-label", prompt.text);
     inp.onkeydown = (e) => { if (e.key === "Enter" && inp.value.trim()) submit({ text: inp.value.trim() }); };
     box.appendChild(wrapRow(inp));
   }
@@ -286,6 +317,7 @@ async function start() {
     channel: "web",
   };
   state.language = body.language;
+  langueDuDocument();
   state.questionnaire = body.questionnaire;
   const p = await postJSON("/api/start", body);
   state.interviewId = p.interview_id;
@@ -359,7 +391,10 @@ function startRecognition() {
   let conf = null;
   state.recog = r;
 
-  r.onstart = () => { btn.classList.add("rec"); micLabel("J'écoute, parlez"); };
+  r.onstart = () => {
+    btn.classList.add("rec"); micLabel("J'écoute, parlez");
+    etat("ecoute", "J'écoute, parlez");
+  };
   r.onresult = (e) => {
     let interim = "";
     for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -383,6 +418,7 @@ function startRecognition() {
   r.onend = () => {
     btn.classList.remove("rec");
     micLabel("Répondre à la voix");
+    if (state.step && !state.step.done) etat("attend", "À vous");
     state.recog = null;
     const dit = final.trim();
     if (!dit) {
@@ -471,3 +507,27 @@ $("hf").onchange = (e) => {
   $("mic-hint").textContent = state.step && state.step.allow_voice ? micHint() : "";
 };
 loadCaps();
+
+/* Les chiffres du clavier physique composent, comme sur un telephone. La these
+   du produit est qu'un appareil a dix touches suffit ; l'ecran ne le montrait
+   pas, puisque la seule facon d'appuyer sur la touche 1 etait de viser un
+   rectangle a la souris. On ne detourne jamais une frappe destinee a un champ
+   de saisie, ni une combinaison avec une touche de commande. */
+document.addEventListener("keydown", (e) => {
+  if (e.altKey || e.ctrlKey || e.metaKey) return;
+  const cible = e.target;
+  if (cible && (cible.tagName === "INPUT" || cible.tagName === "TEXTAREA"
+                || cible.isContentEditable)) return;
+  if (!/^[0-9*#]$/.test(e.key)) return;
+  const touches = document.querySelectorAll("#inputs button.key > b");
+  for (const b of touches) {
+    if (b.textContent.trim() === e.key) {
+      e.preventDefault();
+      const bouton = b.parentElement;
+      bouton.classList.add("frappee");
+      setTimeout(() => bouton.classList.remove("frappee"), 160);
+      bouton.click();
+      return;
+    }
+  }
+});
