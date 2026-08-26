@@ -181,6 +181,20 @@ def _twilio_lisible(erreur: str) -> str:
     phrase de Twilio qui nomme la cause, et notre traduction qui la devine.
     Quand les deux se contredisent, il faut pouvoir le voir.
     """
+    # La conformité passe avant le code. Twilio répond 20003, « accès refusé »,
+    # qui envoie chercher du côté des identifiants et du solde alors que les
+    # deux sont bons : c'est la vérification d'identité qui manque. Une heure
+    # perdue la première fois, sur une piste qui n'en était pas une.
+    bas = (erreur or "").lower()
+    if "compliance profile" in bas or "trust hub" in bas or "kyc" in bas:
+        return (
+            "Vérification d'identité non terminée chez l'opérateur. Le compte est "
+            "actif et les identifiants sont bons : Twilio bloque les appels tant que "
+            "le profil de conformité n'est pas approuvé. Console Twilio, Products & "
+            "Services, Trust Hub, Profiles, Primary profile : renseignez identité et "
+            "adresse exactement comme sur la pièce d'identité. La revue prend jusqu'à "
+            "48 heures. Twilio dit : " + erreur[:200])
+
     code = _code_twilio(erreur)
     explication = _ERREURS_TWILIO.get(code)
     if explication is None:
