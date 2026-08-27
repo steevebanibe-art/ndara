@@ -705,7 +705,24 @@ el("btn-verif").onclick = async () => {
       + "environ deux dollars.");
   }
   if (r.numero_source) {
-    lignes.push("Numéro appelant : " + echapper(r.numero_source) + ".");
+    lignes.push("Numéro appelant : " + echapper(r.numero_source) + "."
+      + (r.entrant === true
+          ? " Appels entrants branchés sur NDARA : composer ce numéro ouvre un entretien."
+          : r.entrant === false
+            ? " Appels entrants non branchés."
+            : ""));
+  }
+  /* Ce que le compte a le droit de composer, pays par pays. Twilio bloque
+   * certaines destinations contre la fraude, et le blocage ne se voit qu'au
+   * moment de composer, une fois l'appel facturé. */
+  const pays = r.pays || {};
+  const isos = Object.keys(pays);
+  if (isos.length) {
+    lignes.push("Appels sortants autorisés : " + isos.map((i) => {
+      const p = pays[i];
+      if (!p.lisible) return echapper(i) + " (illisible)";
+      return echapper(p.nom || i) + " " + (p.sortant ? "oui" : "NON");
+    }).join(" · ") + ".");
   }
 
   const ennuis = r.ennuis || [];

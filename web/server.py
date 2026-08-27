@@ -1035,7 +1035,12 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/telephonie/verifier":
             # Une lecture chez l'opérateur, gratuite, qui tranche entre « le
             # jeton est faux » et « le jeton est bon mais autre chose bloque ».
-            res = APP.tel.verifier()
+            # Les pays a interroger sont ceux des questionnaires charges :
+            # inutile de demander a Twilio des droits sur un pays ou l'on
+            # n'enquete pas, et il ne faut en oublier aucun de ceux ou l'on
+            # enquete.
+            pays = sorted({q.country for q in APP.questionnaires.values() if q.country})
+            res = APP.tel.verifier(pays)
             APP.store.log("telephony_verification", None, ok=res.get("ok"),
                           etat=res.get("etat"), type=res.get("type"))
             if not res.get("ok"):

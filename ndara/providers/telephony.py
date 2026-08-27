@@ -98,7 +98,7 @@ class TelephonyAdapter(Protocol):
 
     def raccrocher(self, call_sid: str) -> bool: ...
 
-    def verifier(self) -> dict: ...
+    def verifier(self, pays: list[str] | None = None) -> dict: ...
 
 
 class NullTelephony:
@@ -113,7 +113,7 @@ class NullTelephony:
     def raccrocher(self, call_sid: str) -> bool:
         return False
 
-    def verifier(self) -> dict:
+    def verifier(self, pays: list[str] | None = None) -> dict:
         return {"ok": False, "raison": "aucun fournisseur de téléphonie configuré"}
 
 
@@ -245,7 +245,7 @@ class TwilioTelephony:
         except Exception as exc:
             return None, str(exc)[:200]
 
-    def verifier(self) -> dict:
+    def verifier(self, pays: list[str] | None = None) -> dict:
         """Demande à l'opérateur tout ce qu'un appel exige, sans passer d'appel.
 
         Le code 20003 de Twilio recouvre trois causes très différentes :
@@ -324,6 +324,25 @@ class TwilioTelephony:
 
             if possede:
                 res["numero_source"] = "acheté sur le compte"
+                # L'ENTRANT : est-ce que ce numero sait ou nous joindre ?
+                # Un numero achete ne repond a rien tant que sa route vocale
+                # ne pointe pas chez nous. La demonstration « composez ce
+                # numero devant le jury » depend entierement de ce champ, et
+                # rien ne le disait.
+                fiche = (achetes or {}).get("incoming_phone_numbers") or [{}]
+                voix = str(fiche[0].get("voice_url") or "")
+                res["entrant_url"] = voix
+                attendu = f"{self.webhook_base}/twiml/start"
+                res["entrant"] = voix.startswith(attendu)
+                if not res["entrant"]:
+                    res["ennuis"].append(
+                        "Le numéro " + self.from_number + " n'est pas branché sur NDARA "
+                        "pour les appels entrants" + (f" (il pointe vers « {voix} »)" if voix
+                        else " (aucune route vocale)") + ". Tant que ce champ n'est pas "
+                        "renseigné, composer ce numéro ne déclenche aucun entretien. "
+                        "Console Twilio, Phone Numbers, Manage, le numéro, section Voice "
+                        "Configuration, « A call comes in » : Webhook, HTTP POST, "
+                        + attendu)
             elif verifie:
                 res["numero_source"] = "vérifié comme identifiant d'appelant"
             else:
@@ -334,6 +353,39 @@ class TwilioTelephony:
                     "tout appel émis depuis lui. Console Twilio, Phone Numbers : "
                     "soit en acheter un, soit vérifier un numéro que vous possédez "
                     "dans Verified Caller IDs, puis corriger TWILIO_FROM_NUMBER.")
+
+        # CE QUE LE COMPTE A LE DROIT DE COMPOSER, PAYS PAR PAYS
+        #
+        # Twilio bloque par defaut les destinations ou sevit la fraude aux
+        # revenus d'interconnexion, et le blocage ne se voit nulle part avant
+        # de composer : l'appel part, echoue, et il est facture. Le Cameroun
+        # est dans cette liste. Le decouvrir en appelant coute de l'argent et
+        # une soiree ; le lire ici ne coute rien.
+        #
+        # Trois droits distincts par pays, et seul le premier nous concerne :
+        # un repondant tire au hasard dans les plages du regulateur est un
+        # numero ordinaire. Les deux autres visent les services surtaxes.
+        res["pays"] = {}
+        for iso in (pays or []):
+            fiche, refus_pays = self._lire(
+                f"https://voice.twilio.com/v1/DialingPermissions/Countries/{iso}")
+            if fiche is None:
+                res["pays"][iso] = {"lisible": False, "raison": refus_pays}
+                continue
+            ouvert = bool(fiche.get("low_risk_numbers_enabled"))
+            res["pays"][iso] = {
+                "lisible": True, "nom": fiche.get("name", iso), "sortant": ouvert,
+                "indicatifs": fiche.get("country_codes", []),
+            }
+            if not ouvert:
+                res["ennuis"].append(
+                    f"Appels sortants vers {fiche.get('name', iso)} ({iso}) : refusés par "
+                    "l'opérateur. Ce pays est bloqué par défaut contre la fraude aux "
+                    "revenus d'interconnexion, et le blocage ne se voit qu'au moment de "
+                    "composer, une fois l'appel facturé. Console Twilio, Voice, Settings, "
+                    "Geo Permissions : si le pays y est refusable, cochez-le ; s'il est "
+                    "verrouillé, il faut le demander au support. L'appel ENTRANT, lui, "
+                    "reste ouvert : ce numéro peut recevoir depuis ce pays.")
 
         return res
 

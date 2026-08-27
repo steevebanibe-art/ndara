@@ -1250,6 +1250,10 @@ if __name__ == "__main__":
 # de bord n'en annonçait qu'une, et a envoyé refaire deux fois un jeton qui
 # allait bien. Ces tests verrouillent le fait qu'il les distingue désormais.
 # --------------------------------------------------------------------------
+BRANCHE_CLASSE = {"incoming_phone_numbers":
+                  [{"voice_url": "https://exemple.test/twiml/start"}]}
+
+
 class TestDiagnosticTelephonie(unittest.TestCase):
 
     def _srv(self):
@@ -1304,7 +1308,7 @@ class TestDiagnosticTelephonie(unittest.TestCase):
         """Identifiants acceptés en lecture, appel refusé : c'est le solde."""
         tel = self._adaptateur({".json?": ({}, ""),
                                 "/Balance.json": {"balance": "0", "currency": "USD"},
-                                "IncomingPhoneNumbers": {"incoming_phone_numbers": [{}]},
+                                "IncomingPhoneNumbers": BRANCHE_CLASSE,
                                 ".json": self.COMPTE})
         res = tel.verifier()
         self.assertTrue(res["ok"])
@@ -1319,23 +1323,64 @@ class TestDiagnosticTelephonie(unittest.TestCase):
         self.assertEqual(res["numero_source"], "inconnu du compte")
         self.assertTrue(any("+17372508034" in e for e in res["ennuis"]))
 
+    BRANCHE = {"incoming_phone_numbers":
+               [{"voice_url": "https://exemple.test/twiml/start"}]}
+
     def test_un_compte_sain_ne_signale_rien(self):
         tel = self._adaptateur({"/Balance.json": {"balance": "20.00", "currency": "USD"},
-                                "IncomingPhoneNumbers": {"incoming_phone_numbers": [{}]},
+                                "IncomingPhoneNumbers": self.BRANCHE,
                                 ".json": self.COMPTE})
         res = tel.verifier()
         self.assertEqual(res["ennuis"], [])
+        self.assertTrue(res["entrant"])
         self.assertEqual(res["numero_source"], "acheté sur le compte")
         self.assertFalse(res["essai"])
 
     def test_une_sous_lecture_qui_echoue_ne_fait_pas_tomber_l_audit(self):
         """Un diagnostic partiel vaut mieux qu'une page blanche."""
         tel = self._adaptateur({"/Balance.json": (None, "passerelle en panne"),
-                                "IncomingPhoneNumbers": {"incoming_phone_numbers": [{}]},
+                                "IncomingPhoneNumbers": BRANCHE_CLASSE,
                                 ".json": self.COMPTE})
         res = tel.verifier()
         self.assertTrue(res["ok"])
         self.assertTrue(any("panne" in e for e in res["ennuis"]))
+
+    def test_un_numero_achete_mais_non_branche_est_nomme(self):
+        """Un numero achete ne repond a rien tant que sa route vocale est vide.
+
+        C'est la demonstration « composez ce numero devant le jury » qui en
+        depend, et rien ne le disait : le numero apparaissait comme acquis,
+        donc comme pret.
+        """
+        tel = self._adaptateur({"/Balance.json": {"balance": "20.00", "currency": "USD"},
+                                "IncomingPhoneNumbers": {"incoming_phone_numbers": [{}]},
+                                ".json": self.COMPTE})
+        res = tel.verifier()
+        self.assertFalse(res["entrant"])
+        self.assertTrue(any("entrants" in e for e in res["ennuis"]))
+
+    def test_un_pays_ferme_au_sortant_est_nomme_avant_de_composer(self):
+        """Twilio bloque certaines destinations, et le blocage ne se voit qu'en payant.
+
+        L'appel part, echoue, et il est facture. Le lire dans le diagnostic ne
+        coute rien.
+        """
+        tel = self._adaptateur({
+            "/Balance.json": {"balance": "20.00", "currency": "USD"},
+            "IncomingPhoneNumbers": BRANCHE_CLASSE,
+            "DialingPermissions/Countries/CM": {
+                "name": "Cameroon", "country_codes": ["237"],
+                "low_risk_numbers_enabled": False},
+            "DialingPermissions/Countries/KH": {
+                "name": "Cambodia", "country_codes": ["855"],
+                "low_risk_numbers_enabled": True},
+            ".json": self.COMPTE})
+        res = tel.verifier(["CM", "KH"])
+        self.assertFalse(res["pays"]["CM"]["sortant"])
+        self.assertTrue(res["pays"]["KH"]["sortant"])
+        self.assertTrue(any("Cameroon" in e and "entrant" in e.lower()
+                            for e in res["ennuis"]),
+                        "le refus doit nommer le pays ET rappeler que l'entrant reste ouvert")
 
     def test_des_identifiants_refuses_restent_concluants(self):
         """La fiche du compte est la seule lecture dont l'échec tranche."""
