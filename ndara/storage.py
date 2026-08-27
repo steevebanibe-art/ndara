@@ -6,8 +6,10 @@ ne quitte jamais la mémoire du processus d'appel.
 """
 from __future__ import annotations
 
+import functools
 import json
 import sqlite3
+import threading
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Iterable
@@ -100,17 +102,59 @@ CREATE INDEX IF NOT EXISTS idx_interviews_disp ON interviews(disposition);
 """
 
 
+def _serialise(methode):
+    """Un seul fil a la fois dans la base.
+
+    POURQUOI CE VERROU EXISTE, ET CE QU'IL A COUTE DE NE PAS L'AVOIR
+    ----------------------------------------------------------------
+    Le serveur est un ThreadingHTTPServer : il ouvre un fil par requete.
+    La base etait ouverte une seule fois, avec check_same_thread=False, et
+    partagee par tous ces fils. Cet argument ne rend pas une connexion
+    sqlite3 utilisable a plusieurs : il desactive seulement le garde-fou
+    qui l'interdisait. L'etat de transaction et les curseurs appartiennent
+    a la connexion, pas a l'appelant, si bien que deux entretiens menes en
+    meme temps se marchaient dessus au milieu d'un commit.
+
+    Ce n'etait pas un melange de donnees, c'etait un plantage. Mesure sur
+    douze entretiens simultanes : deux aboutissaient, dix mouraient sur
+    « sqlite3.InterfaceError: bad parameter or other API misuse » ou sur
+    « SystemError: error return without exception set » leve par
+    conn.commit(). La campagne d'appels reels accepte jusqu'a dix appels
+    simultanes : elle serait tombee des le deuxieme decrochage.
+
+    Le verrou est re-entrant parce que certaines methodes en appellent
+    d'autres. Il serialise les acces, ce qui est sans consequence ici :
+    les ecritures sont minuscules et la lecture la plus lourde porte sur
+    quelques centaines de lignes. La correction sure passe avant une
+    concurrence dont ce produit n'a pas besoin.
+
+    Une connexion par fil aurait laisse plus de parallelisme, mais le
+    serveur cree un fil PAR REQUETE : cela reviendrait a ouvrir une
+    connexion a chaque appel HTTP.
+    """
+    @functools.wraps(methode)
+    def enveloppe(self, *args, **kwargs):
+        with self._verrou:
+            return methode(self, *args, **kwargs)
+    return enveloppe
+
+
 class Store:
     def __init__(self, path: str | Path = "data/ndara.db") -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._verrou = threading.RLock()
         self.conn = sqlite3.connect(self.path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
+        # Sans delai d'attente, un fil qui trouve la base occupee abandonne
+        # immediatement au lieu de patienter. WAL est pose par le schema.
+        self.conn.execute("PRAGMA busy_timeout=30000")
         self.conn.executescript(SCHEMA)
         self.conn.commit()
 
     # ---------- entretiens ----------
 
+    @_serialise
     def save_interview(self, iv: Interview) -> None:
         d = asdict(iv)
         d["flags"] = json.dumps(iv.flags, ensure_ascii=False)
@@ -125,12 +169,14 @@ class Store:
         )
         self.conn.commit()
 
+    @_serialise
     def get_interview(self, interview_id: str) -> Interview | None:
         row = self.conn.execute(
             "SELECT * FROM interviews WHERE id=?", (interview_id,)
         ).fetchone()
         return _row_to_interview(row) if row else None
 
+    @_serialise
     def interviews(self, disposition: str | None = None) -> list[Interview]:
         if disposition:
             rows = self.conn.execute(
@@ -140,6 +186,7 @@ class Store:
             rows = self.conn.execute("SELECT * FROM interviews").fetchall()
         return [_row_to_interview(r) for r in rows]
 
+    @_serialise
     def provenance(self) -> dict[str, int]:
         """D'où viennent les entretiens, par canal.
 
@@ -155,6 +202,7 @@ class Store:
 
     # ---------- tours ----------
 
+    @_serialise
     def save_turn(self, t: Turn) -> None:
         d = asdict(t)
         d["flags"] = json.dumps(t.flags, ensure_ascii=False)
@@ -168,18 +216,21 @@ class Store:
         )
         self.conn.commit()
 
+    @_serialise
     def turns(self, interview_id: str) -> list[Turn]:
         rows = self.conn.execute(
             "SELECT * FROM turns WHERE interview_id=? ORDER BY seq", (interview_id,)
         ).fetchall()
         return [_row_to_turn(r) for r in rows]
 
+    @_serialise
     def all_turns(self) -> list[Turn]:
         rows = self.conn.execute("SELECT * FROM turns ORDER BY interview_id, seq").fetchall()
         return [_row_to_turn(r) for r in rows]
 
     # ---------- base de sondage ----------
 
+    @_serialise
     def add_sample_units(self, units: Iterable[SampleUnit]) -> int:
         n = 0
         for u in units:
@@ -196,10 +247,12 @@ class Store:
         self.conn.commit()
         return n
 
+    @_serialise
     def sample_units(self) -> list[SampleUnit]:
         rows = self.conn.execute("SELECT * FROM sample_units").fetchall()
         return [SampleUnit(**dict(r)) for r in rows]
 
+    @_serialise
     def set_unit_disposition(self, msisdn_hash: str, disposition: str,
                              interview_id: str | None = None) -> None:
         self.conn.execute(
@@ -211,6 +264,7 @@ class Store:
 
     # ---------- corpus ----------
 
+    @_serialise
     def save_corpus_item(self, item: CorpusItem) -> None:
         d = asdict(item)
         d["demographics"] = json.dumps(item.demographics, ensure_ascii=False)
@@ -219,6 +273,7 @@ class Store:
         self.conn.execute(f"INSERT OR REPLACE INTO corpus_items ({cols}) VALUES ({placeholders})", d)
         self.conn.commit()
 
+    @_serialise
     def corpus_items(self, respondent_hash: str | None = None) -> list[dict[str, Any]]:
         if respondent_hash:
             rows = self.conn.execute(
@@ -233,6 +288,7 @@ class Store:
             out.append(d)
         return out
 
+    @_serialise
     def delete_corpus_for(self, respondent_hash: str) -> int:
         cur = self.conn.execute(
             "DELETE FROM corpus_items WHERE respondent_hash=?", (respondent_hash,)
@@ -242,6 +298,7 @@ class Store:
 
     # ---------- journal ----------
 
+    @_serialise
     def log(self, kind: str, interview_id: str | None = None, **payload: Any) -> None:
         self.conn.execute(
             "INSERT INTO events (at, kind, interview_id, payload) VALUES (?,?,?,?)",
@@ -249,6 +306,7 @@ class Store:
         )
         self.conn.commit()
 
+    @_serialise
     def close(self) -> None:
         self.conn.close()
 

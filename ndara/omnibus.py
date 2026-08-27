@@ -75,11 +75,36 @@ class Tarif:
         return self.fixe_usd + (duree_s / 60.0) * self.minute_usd
 
 
-# Tarif voix relevé sur la page tarifaire publique de Twilio pour un mobile
-# camerounais, le 24 août 2026. La part fixe suit le détail publié dans le
-# README : 0,03 de transcription, 0,01 de codage, 0,35 d'incitation, et 0,60
-# de quote-part des appels qui n'aboutissent pas.
+# Tarifs voix relevés le 25 août 2026 **sur le compte Twilio lui-même**, et non
+# sur la page tarifaire publique. La distinction compte : ce n'est pas un prix
+# unique mais une fourchette, parce que Twilio facture selon l'opérateur qui
+# termine l'appel, et qu'on ne choisit pas cet opérateur.
+#
+#   Cameroun  +237 : de 0,410 à 0,787 $ la minute
+#   Cambodge  +855 : de 0,112 à 0,132 $ la minute
+#
+# **Les tarifs retenus ici sont le haut de chaque fourchette**, par prudence :
+# une économie unitaire qu'on présente à un jury doit se tromper du côté qui
+# coûte, jamais du côté qui arrange. La thèse résiste d'ailleurs sur toute la
+# plage, et `test_omnibus.py` le vérifie au tarif bas comme au tarif haut.
+#
+# La part fixe suit le détail publié dans le README : 0,03 de transcription,
+# 0,01 de codage, 0,35 d'incitation, et 0,60 de quote-part des appels qui
+# n'aboutissent pas. Elle est reprise telle quelle pour le Cambodge, faute de
+# donnée propre : inventer une incitation cambodgienne plausible reviendrait à
+# fabriquer le chiffre qui décide de la conclusion.
+FOURCHETTE_TWILIO_CM = (0.410, 0.7873)
+FOURCHETTE_TWILIO_KH = (0.112, 0.132)
+
 TARIF_TWILIO_CM = Tarif("Twilio, mobile camerounais", minute_usd=0.7873, fixe_usd=0.99)
+
+# Le Cambodge coûte environ six fois moins cher la minute que le Cameroun, et
+# ce n'est pas un détail comptable : c'est ce qui fait passer une vague de
+# 3 000 ménages de « impossible sans accord opérateur » à « presque à
+# l'équilibre sans aucun accord ». Le même produit n'a donc pas le même modèle
+# économique des deux côtés, et il vaut mieux le dire que le découvrir devant
+# un jury cambodgien.
+TARIF_TWILIO_KH = Tarif("Twilio, mobile cambodgien", minute_usd=0.132, fixe_usd=0.99)
 
 # Hypothèse d'accord opérateur, tant qu'aucun accord n'est signé. La
 # quote-part des échecs tombe aussi, parce qu'un appel qui ne décroche pas

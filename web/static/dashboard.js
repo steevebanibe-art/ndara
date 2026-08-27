@@ -127,11 +127,13 @@ const FLAG_LABELS = {
 
 /* La vague omnibus : le modèle économique, calculé et non promis.
  *
- * Deux choses doivent se voir ici, et elles sont désagréables toutes les deux.
+ * Trois choses doivent se voir ici, et les deux premières sont désagréables.
  * Un appel a une durée maximale, donc les créneaux sont un stock épuisable.
- * Et la même vague est bénéficiaire ou déficitaire selon qu'un accord
- * opérateur existe ou non. Cacher la seconde reviendrait à se la faire dire
- * en finale.
+ * La même vague est bénéficiaire ou déficitaire selon qu'un accord opérateur
+ * existe ou non : cacher ce fait reviendrait à se le faire dire en finale.
+ * Et elle change aussi de signe selon le pays appelé, la minute cambodgienne
+ * coûtant six fois moins cher que la camerounaise. Le produit est le même,
+ * le modèle économique ne l'est pas, et c'est le tarif qui en décide.
  */
 function usd(x, d = 2) {
   if (x == null) return "-";
@@ -202,9 +204,12 @@ async function chargerOmnibus() {
 
   // Le fait central, dit avant qu'on nous le dise.
   const tw = o.facture.twilio, op = o.facture.operateur;
+  const kh = o.facture.cambodge;
   const sup = o.question_supplementaire;
+  const fo = o.fourchettes_usd_minute || {};
+  const plage = (f) => (f ? `de ${num(f[0], 3)} à ${num(f[1], 3)} $` : "");
   el("omni-tarifs").innerHTML = `
-    <h3 class="sub" style="margin-top:0">La même vague, sous deux tarifs</h3>
+    <h3 class="sub" style="margin-top:0">La même vague, sous trois tarifs</h3>
     <div class="tablewrap">
     <table class="data">
       <thead><tr>
@@ -220,6 +225,14 @@ async function chargerOmnibus() {
           <td class="num">${usd(tw.recette_totale_usd, 0)}</td>
           <td class="num">${usd(tw.marge_totale_usd, 0)}</td>
           <td class="num">${usd(sup.twilio.cout_total_usd, 0)}</td>
+        </tr>
+        <tr>
+          <td>${kh.tarif}</td>
+          <td class="num">${usd(kh.cout_par_entretien_usd)}</td>
+          <td class="num">${usd(kh.cout_total_usd, 0)}</td>
+          <td class="num">${usd(kh.recette_totale_usd, 0)}</td>
+          <td class="num">${usd(kh.marge_totale_usd, 0)}</td>
+          <td class="num">${usd(sup.cambodge.cout_total_usd, 0)}</td>
         </tr>
         <tr>
           <td>${op.tarif}</td>
@@ -239,6 +252,17 @@ async function chargerOmnibus() {
       public ces secondes coûtent presque autant que la question se vend ; sous
       accord opérateur elles ne coûtent presque rien. C'est là, et nulle part
       ailleurs, que l'omnibus devient un modèle économique.
+    </p>
+    <p class="hint" style="margin-top:10px">
+      Les deux premières lignes sont le même opérateur et le même code, appelant
+      deux pays. Au Cameroun la vague exige un accord de gros pour exister ; au
+      Cambodge elle en est à portée sans aucun accord, et elle passe au vert dès
+      que la question se vend 800 $ au lieu de 500. Relevé sur le compte le
+      ${fo.releve ? fo.releve.replace("compte Twilio, ", "") : "25 août 2026"} :
+      Cameroun ${plage(fo.cameroun)} la minute, Cambodge ${plage(fo.cambodge)}.
+      Ce sont des fourchettes et non des prix, parce que la facturation dépend de
+      l'opérateur qui termine l'appel. Le calcul ci-dessus retient le haut de
+      chaque plage, du côté qui coûte.
     </p>`;
 
   el("omni-note").textContent = o.note;

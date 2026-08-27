@@ -5,16 +5,26 @@ une évaluation en ligne, donc le canal du jury est le navigateur. La
 téléphonie sert (a) aux entretiens réels qui produisent le petit chiffre vrai,
 (b) à la vidéo de preuve.
 
-⚠️ Tarif relevé sur la page tarifaire publique de Twilio le 24 août 2026 :
-**0,7873 $ la minute** vers un mobile camerounais. Un entretien de 2 min 30
-revient donc à 1,97 $ de minutes, et environ 3 $ par entretien complété une
-fois répartie la facture des appels qui n'aboutissent pas. Un répondeur qui
-décroche est facturé, un refus qui décroche aussi.
+⚠️ Tarifs relevés **sur le compte lui-même** le 25 août 2026, et non sur la
+page tarifaire publique. Ce ne sont pas des prix uniques mais des fourchettes,
+parce que Twilio facture selon l'opérateur qui termine l'appel :
+
+    Cameroun +237 : de 0,410 à 0,787 $ la minute
+    Cambodge +855 : de 0,112 à 0,132 $ la minute
+
+Au haut de la fourchette camerounaise, retenu partout par prudence, un
+entretien de 2 min 30 revient à 1,97 $ de minutes, et environ 3 $ par entretien
+complété une fois répartie la facture des appels qui n'aboutissent pas. Un
+répondeur qui décroche est facturé, un refus qui décroche aussi.
 
 Un partenariat opérateur (minutes on-net) diviserait ce poste par cinq, et
-c'est ce qui fait passer une vague mensuelle du déficit à la marge. Tant
+c'est ce qui fait passer une vague camerounaise du déficit à la marge. Tant
 qu'aucun accord n'est signé, ce chiffre reste une hypothèse et doit être
 présenté comme telle.
+
+Le Cambodge, lui, coûte six fois moins cher la minute, et n'a donc pas besoin
+du même accord pour tenir debout. Le produit est le même des deux côtés, le
+modèle économique ne l'est pas.
 
 Deuxième raison, non financière : un identifiant d'appelant **étranger** fait
 chuter le taux de décrochage. Le numéro local n'est pas un détail de confort,
@@ -295,8 +305,9 @@ class TwilioTelephony:
             elif montant < 1:
                 res["ennuis"].append(
                     f"Solde très bas : {montant:.2f} {devise}. Un appel vers un "
-                    "mobile camerounais coûte 0,7873 $ la minute, il n'y a plus de "
-                    "quoi mener un entretien entier.")
+                    "mobile camerounais coûte de 0,410 à 0,787 $ la minute selon "
+                    "l'opérateur qui termine, il n'y a plus de quoi mener un "
+                    "entretien entier.")
         else:
             res["ennuis"].append("Solde illisible : " + refus_solde)
 
@@ -358,13 +369,33 @@ class TwilioTelephony:
 # TwiML : traduction d'une invite NDARA en instructions téléphoniques
 # --------------------------------------------------------------------------
 
-# Modèle de reconnaissance taillé pour des réponses brèves. Le modèle par
-# défaut est réglé pour de la dictée : sur « oui », « le Littoral » ou « mille
-# cinq cents », il attend une suite qui ne vient pas, et ce délai s'entend.
-_MODELE_COURT = "googlev2_short"
+# Le modèle de reconnaissance, et ce choix a été payé une fois.
+#
+# `googlev2_short` était employé jusqu'au 27 août 2026 parce qu'il est taillé
+# pour des réponses brèves : le modèle de dictée, sur « oui » ou « le
+# Littoral », attend une suite qui ne vient pas, et ce délai s'entend. Le
+# raisonnement était juste sur la durée et faux sur le support. `googlev2_short`
+# est un modèle courte-durée mais **non téléphonique**, entraîné sur de l'audio
+# pleine bande. Une ligne téléphonique transporte 8 kHz, et tout ce qui
+# distingue un « oui » d'un « puis-je » vit précisément dans les fréquences que
+# le codec a jetées.
+#
+# Mesuré sur le premier vrai appel entrant, le 26 août 2026 : un « oui » en
+# français camerounais est revenu transcrit « puis-je », confiance 0,0.
+#
+# La documentation de Twilio recommande explicitement `phone_call` avec
+# `language="fr-FR"` pour du français accentué sur une ligne téléphonique.
+# C'est un modèle entraîné sur de l'audio téléphonique, donc sur la bande qui
+# nous reste réellement.
+#
+# Deux voisins existent si celui-ci déçoit à son tour, et ils se changent ici,
+# à un seul endroit : `googlev2_telephony_short`, l'équivalent téléphonique
+# direct de l'ancien réglage, et `googlev2_telephony` pour des réponses plus
+# longues. Ne pas revenir à un modèle non téléphonique sans avoir mesuré.
+_MODELE_VOIX = "phone_call"
 
 
-def _indices(prompt: dict) -> str:
+def _indices(prompt: dict, langue: str = "fr") -> str:
     """Ce que la reconnaissance doit s'attendre à entendre.
 
     Le moteur connaît déjà les seules réponses recevables : ce sont les
@@ -377,11 +408,49 @@ def _indices(prompt: dict) -> str:
     une question de sondage a dix modalités au plus.
     """
     vus: list[str] = []
+
+    def ajouter(valeur: str) -> None:
+        v = (valeur or "").strip()
+        if v and v not in vus and len(v) <= 100:
+            vus.append(v)
+
     for o in prompt.get("options") or []:
-        for valeur in (o.get("dtmf"), o.get("label")):
-            v = (valeur or "").strip()
-            if v and v not in vus and len(v) <= 100:
-                vus.append(v)
+        ajouter(o.get("dtmf"))
+        ajouter(o.get("label"))
+
+    # Ce que le codeur sait déjà accepter, la reconnaissance doit s'y attendre.
+    #
+    # C'est le trou trouvé le 27 août 2026, et il était invisible parce que les
+    # deux moitiés du problème vivaient dans deux fichiers. `coding.py` connaît
+    # depuis toujours les façons naturelles de dire oui et non : « ouais »,
+    # « bien sûr », « d'accord », « tout à fait », « voilà ». Le moteur les code
+    # correctement quand elles lui arrivent. Mais elles n'étaient jamais dites à
+    # la reconnaissance, qui n'avait en indices que « 1, Oui, 2, Non ».
+    #
+    # Or personne ne répond « Oui » tout court à une question de consentement.
+    # On demandait donc à la reconnaissance de retrouver un mot isolé, sur une
+    # ligne à 8 kHz, dans une phrase entière, sans lui dire ce qu'elle cherchait.
+    from ..coding import AFFIRMATION, MARQUEURS_TOUCHE, NEGATION, _FR_UNITS
+
+    codes = {(o.get("code") or "").lower() for o in prompt.get("options") or []}
+    if {"yes", "no"} & codes or {"oui", "non"} & codes:
+        for mot in AFFIRMATION.get(langue, []) + NEGATION.get(langue, []):
+            ajouter(mot)
+
+    # Une question numérique n'a pas de modalités, donc pas un seul indice
+    # jusqu'ici. C'est pourtant là que la reconnaissance travaille le plus : un
+    # montant dit à voix haute, en chiffres ou en toutes lettres.
+    if prompt.get("input_type") == "number":
+        if langue == "fr":
+            for mot in _FR_UNITS:
+                ajouter(mot)
+            for mot in ("cent", "cents", "mille", "million"):
+                ajouter(mot)
+        for mot in MARQUEURS_TOUCHE.get(langue, []):
+            if len(mot) > 2:          # « le » et « la » ne sont pas des indices
+                ajouter(mot)
+        ajouter(prompt.get("unit"))
+
     return ",".join(vus[:500])
 
 
@@ -486,13 +555,17 @@ def prompt_to_twiml(prompt: dict, *, action_url: str, audio_base: str | None = N
             lines.extend(enonce)
             lines.append(gather_ouvrant + "/>")
 
+    # Les indices valent pour toute écoute, pas seulement pour celles à
+    # modalités. Ils étaient posés sur la seule branche « dtmf speech », donc
+    # une question ouverte et une question numérique n'en recevaient aucun.
+    indices = _indices(prompt, langue)
     commun = (f'action="{escape(action_url)}" method="POST" language="{locale}" '
-              f'speechTimeout="auto" speechModel="{_MODELE_COURT}" '
-              f'profanityFilter="false" actionOnEmptyResult="true"')
+              f'speechTimeout="auto" speechModel="{_MODELE_VOIX}" '
+              f'profanityFilter="false" actionOnEmptyResult="true"'
+              + (f' hints="{escape(indices)}"' if indices else ""))
 
     if prompt.get("allow_dtmf") and prompt.get("options"):
-        poser(f'<Gather input="dtmf speech" numDigits="1" timeout="7" '
-              f'{commun} hints="{escape(_indices(prompt))}"')
+        poser(f'<Gather input="dtmf speech" numDigits="1" timeout="7" {commun}')
     elif corpus_consenti and transcription and prompt.get("corpus_eligible", True):
         lines.extend(enonce)
         lines.append(
@@ -500,9 +573,24 @@ def prompt_to_twiml(prompt: dict, *, action_url: str, audio_base: str | None = N
             f'maxLength="{record_seconds}" timeout="3" playBeep="true" '
             f'trim="trim-silence" transcribe="false"/>'
         )
+    elif prompt.get("input_type") == "number":
+        # Une question numérique n'a pas de modalités, donc pas de touche
+        # attribuée d'avance. Elle n'écoutait pour cette raison que la parole.
+        # Or la relance de dernier recours dit, en toutes lettres et dans la
+        # voix de studio : « utilisez les touches de votre téléphone ». On
+        # promettait un filet qui n'existait pas, exactement sur les questions
+        # où la reconnaissance échoue le plus, celles où il faut dire un
+        # montant. Le clavier est ici aussi le seul recours de quelqu'un que la
+        # transcription ne comprend pas.
+        #
+        # Pas de numDigits : un nombre n'a pas de longueur connue, et en
+        # imposer une couperait « 1500 » à « 1 ». On ferme sur la touche dièse,
+        # ou sur le silence.
+        poser(f'<Gather input="dtmf speech" finishOnKey="#" timeout="7" {commun}')
+
     else:
-        # Réponse libre ou numérique sans accord au corpus : on transcrit au
-        # vol, on ne garde rien.
+        # Réponse libre sans accord au corpus : on transcrit au vol, on ne
+        # garde rien.
         poser(f'<Gather input="speech" timeout="7" {commun}')
 
     # Silence complet : la boucle doit se refermer, sinon l'appel reste ouvert

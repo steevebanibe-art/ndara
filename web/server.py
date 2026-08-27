@@ -158,6 +158,32 @@ def _forme_identifiants() -> list[str]:
     return ennuis
 
 
+def _confiance_twilio(brut: str | None) -> float | None:
+    """La confiance de transcription, ou None quand l'opérateur n'en donne pas.
+
+    Les modèles téléphoniques de Twilio, `phone_call` et la famille googlev2,
+    renvoient presque toujours `Confidence = 0.0`, y compris sur une
+    transcription parfaite. Ce zéro n'est pas une mesure basse, c'est une
+    absence de mesure, et les confondre coûte deux fois.
+
+    En aval, `audit.py` déclare « transcription faible » sous 0,55 : lu
+    littéralement, tout entretien téléphonique réel serait donc marqué comme
+    dégradé, et le rapport de qualité publierait une moyenne de confiance de
+    zéro. Sur un instrument dont toute la thèse est de publier l'erreur avec le
+    chiffre, un défaut de qualité inventé est aussi grave qu'un défaut caché.
+
+    On ne remplace pas le zéro par une valeur plausible, ce serait fabriquer.
+    On dit qu'il n'y a pas de mesure, et l'audit compte les tours concernés.
+    """
+    if brut is None or brut == "":
+        return None
+    try:
+        valeur = float(brut)
+    except (TypeError, ValueError):
+        return None
+    return None if valeur == 0.0 else valeur
+
+
 def _code_twilio(erreur: str) -> str:
     """Le code d'erreur de l'opérateur, et lui seul.
 
@@ -488,6 +514,13 @@ class App:
         v = self.vague
         twilio = v.facture(n_aboutis, omnibus.TARIF_TWILIO_CM)
         operateur = v.facture(n_aboutis, omnibus.TARIF_OPERATEUR)
+        # Le même calcul au tarif cambodgien, où la minute coûte six fois
+        # moins cher. Ce n'est pas une curiosité : c'est le seul des trois
+        # scénarios qui passe au vert sans qu'aucun accord ne soit signé, dès
+        # que la question se vend 800 $. Le modèle n'est donc pas le même des
+        # deux côtés, et le dossier doit le dire au lieu de présenter une
+        # économie camerounaise comme si elle valait partout.
+        cambodge = v.facture(n_aboutis, omnibus.TARIF_TWILIO_KH)
 
         # Ce que coûterait une question de plus, si elle tenait dans l'appel.
         # Dix secondes est la durée d'une question fermée de ce questionnaire.
@@ -496,6 +529,8 @@ class App:
                                                      omnibus.TARIF_TWILIO_CM),
             "operateur": v.cout_question_supplementaire(10.0, n_aboutis,
                                                         omnibus.TARIF_OPERATEUR),
+            "cambodge": v.cout_question_supplementaire(10.0, n_aboutis,
+                                                       omnibus.TARIF_TWILIO_KH),
         }
 
         # L'ordre des créneaux pour les premiers appels : la rotation se
@@ -510,7 +545,16 @@ class App:
             "disponible": True,
             "vague": v.as_dict(),
             "n_aboutis": n_aboutis,
-            "facture": {"twilio": twilio, "operateur": operateur},
+            "facture": {"twilio": twilio, "operateur": operateur,
+                        "cambodge": cambodge},
+            # Les tarifs sont des fourchettes relevées sur le compte, pas des
+            # prix uniques. Publier la fourchette empêche de faire passer le
+            # haut de la plage pour une mesure.
+            "fourchettes_usd_minute": {
+                "cameroun": list(omnibus.FOURCHETTE_TWILIO_CM),
+                "cambodge": list(omnibus.FOURCHETTE_TWILIO_KH),
+                "releve": "compte Twilio, 25 août 2026",
+            },
             "question_supplementaire": marginal,
             "rotations": rotations,
             "note": (
@@ -775,9 +819,23 @@ class Handler(BaseHTTPRequestHandler):
             return dict(urllib.parse.parse_qsl(raw.decode("utf-8")))
 
     def _read_form(self) -> dict:
+        """Les paramètres du corps, **y compris ceux dont la valeur est vide**.
+
+        `keep_blank_values` n'est pas un détail de confort ici, c'est la
+        condition pour que la signature de l'opérateur soit vérifiable. Twilio
+        calcule la sienne sur tous les paramètres qu'il envoie, vides compris,
+        et un appel entrant en porte une dizaine de vides : la ville, la région
+        et le code postal de l'appelant sont inconnus dès que l'appel vient de
+        l'étranger. Sans cette option, Python les jette en silence, la
+        concaténation n'est plus la même, et **toute requête entrante est
+        refusée en 403** alors que le jeton est bon. Le symptôme est trompeur
+        au possible : la console dit « identifiants acceptés », les appels
+        sortants passent, et seuls les entrants échouent.
+        """
         length = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(length).decode("utf-8") if length else ""
-        return {k: v[0] for k, v in urllib.parse.parse_qs(raw).items()}
+        return {k: v[0] for k, v in
+                urllib.parse.parse_qs(raw, keep_blank_values=True).items()}
 
     def _serve_file(self, path: Path) -> None:
         if not path.exists() or not path.is_file():
@@ -1121,10 +1179,17 @@ class Handler(BaseHTTPRequestHandler):
 
         if route == "/twiml/start":
             langue = (qs.get("lang") or ["fr"])[0]
+            # Le numéro du répondant n'est pas au même endroit selon le sens de
+            # l'appel. En sortant, c'est nous qui composons, donc le répondant
+            # est « To ». En entrant, c'est lui qui compose : « To » est notre
+            # propre numéro, et le prendre reviendrait à enregistrer tous les
+            # appels entrants sous un seul et même numéro, le nôtre.
+            entrant = (form.get("Direction") or "").startswith("inbound")
             prompt = engine.start(language=langue,
                                   stratum=(qs.get("stratum") or ["MTN"])[0],
                                   channel="phone",
-                                  msisdn=form.get("To"))
+                                  msisdn=form.get("From") if entrant
+                                         else form.get("To"))
             if (qs.get("essai") or [""])[0]:
                 # Un appel qu'on se passe à soi-même pour vérifier la ligne
                 # n'est pas une observation. On le marque ici, et l'analyse
@@ -1156,7 +1221,7 @@ class Handler(BaseHTTPRequestHandler):
                     dtmf=form.get("Digits"),
                     audio_bytes=audio,
                     audio_ext="wav",
-                    asr_confidence=float(form["Confidence"]) if form.get("Confidence") else None,
+                    asr_confidence=_confiance_twilio(form.get("Confidence")),
                     duration_ms=duree,
                 )
             except KeyError:

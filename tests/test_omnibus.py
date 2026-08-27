@@ -210,6 +210,65 @@ class TestFacturation(unittest.TestCase):
         self.assertLess(twilio["marge_totale_usd"], 0)
         self.assertGreater(operateur["marge_totale_usd"], 0)
 
+    def test_la_these_resiste_au_bas_de_la_fourchette_camerounaise(self):
+        """Le tarif camerounais est une fourchette, pas un prix. La conclusion
+        ne doit pas dépendre de l'endroit où l'on se place dedans.
+
+        Retenir le haut de la fourchette serait suspect si la thèse ne tenait
+        qu'à ce choix. On refait donc le calcul au tarif le plus favorable qui
+        se soit présenté sur le compte : la vague perd encore de l'argent.
+        """
+        bas, haut = om.FOURCHETTE_TWILIO_CM
+        self.assertEqual(haut, om.TARIF_TWILIO_CM.minute_usd)
+        au_plus_bas = om.Tarif("Twilio, Cameroun au tarif bas",
+                               minute_usd=bas,
+                               fixe_usd=om.TARIF_TWILIO_CM.fixe_usd)
+        self.assertLess(self.vague.facture(3000, au_plus_bas)["marge_totale_usd"], 0)
+
+    def test_le_cambodge_coute_bien_moins_cher_que_le_cameroun(self):
+        """Six fois moins cher la minute, et cela change le modèle, pas la marge.
+
+        C'est l'argument à porter devant le ministère cambodgien : le même
+        produit exige un accord opérateur au Cameroun et s'en passe presque
+        au Cambodge.
+        """
+        cm = self.vague.facture(3000, om.TARIF_TWILIO_CM)
+        kh = self.vague.facture(3000, om.TARIF_TWILIO_KH)
+        self.assertLess(kh["cout_total_usd"], cm["cout_total_usd"] / 2)
+        # Presque à l'équilibre, sans aucun accord : la perte cambodgienne est
+        # au moins cinq fois plus petite que la perte camerounaise.
+        self.assertLess(abs(kh["marge_totale_usd"]), abs(cm["marge_totale_usd"]) / 5)
+
+    def test_la_question_de_plus_est_moins_chere_au_cambodge_qu_en_gros_au_cameroun(self):
+        """Le fait le plus fort du dossier, et le moins intuitif.
+
+        Une question de plus n'achète que des secondes de voix, donc son coût
+        est le tarif à la minute et rien d'autre. Or la minute cambodgienne au
+        détail (0,132 $) est moins chère que la minute camerounaise au tarif de
+        gros qu'on espère négocier (0,152 $). Autrement dit : au Cambodge,
+        l'économie marginale de l'omnibus est **déjà** meilleure aujourd'hui,
+        sans accord, qu'elle ne le serait au Cameroun après une négociation
+        réussie. C'est écrit dans le dossier, donc c'est tenu par un test.
+        """
+        self.assertLess(om.TARIF_TWILIO_KH.minute_usd, om.TARIF_OPERATEUR.minute_usd)
+        kh = self.vague.cout_question_supplementaire(10.0, 3000, om.TARIF_TWILIO_KH)
+        op = self.vague.cout_question_supplementaire(10.0, 3000, om.TARIF_OPERATEUR)
+        self.assertLess(kh["cout_total_usd"], op["cout_total_usd"])
+
+    def test_au_cambodge_la_vague_devient_rentable_a_800_dollars(self):
+        """Le levier du prix, vérifié plutôt qu'annoncé.
+
+        À 500 $ la question, la vague cambodgienne perd encore un peu. À 800 $,
+        elle passe au vert sans accord opérateur, ce que le Cameroun ne fait
+        dans aucun des deux cas.
+        """
+        for creneau in self.vague.creneaux:
+            creneau.prix_question_usd = 800.0
+        kh = self.vague.facture(3000, om.TARIF_TWILIO_KH)
+        cm = self.vague.facture(3000, om.TARIF_TWILIO_CM)
+        self.assertGreater(kh["marge_totale_usd"], 0)
+        self.assertLess(cm["marge_totale_usd"], 0)
+
     def test_la_question_supplementaire_ne_paie_pas_la_part_fixe(self):
         """C'est toute la logique de l'omnibus : le fixe est déjà payé par la vague."""
         sup = self.vague.cout_question_supplementaire(10.0, 1000, om.TARIF_TWILIO_CM)

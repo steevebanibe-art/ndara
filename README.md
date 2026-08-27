@@ -321,18 +321,33 @@ Dit ici plutôt que découvert par un évaluateur :
 
 ## Coût réel d'un entretien complété (2 min 30)
 
-Tarif voix relevé sur la page tarifaire publique de Twilio pour un mobile camerounais,
-le 24 août 2026 : **0,7873 $ la minute**.
+Tarifs voix relevés **sur le compte Twilio lui-même** le 25 août 2026, et non sur la
+page tarifaire publique. Ce ne sont pas des prix uniques mais des fourchettes, parce que
+la facturation dépend de l'opérateur qui termine l'appel, et qu'on ne le choisit pas :
 
-| | Twilio, Cameroun | Partenariat opérateur |
-|---|---|---|
-| Minutes voix (2 min 30) | **1,97 $** | ~0,38 $ *(hypothèse)* |
-| Transcription | ~0,03 $ | ~0,03 $ |
-| Codage | ~0,01 $ | ~0,01 $ |
-| Synthèse vocale | 0 $ *(pré-synthétisée)* | 0 $ |
-| Incitation au répondant | ~0,35 $ | ~0,35 $ |
-| Quote-part des appels qui n'aboutissent pas | ~0,60 $ | ~0,12 $ |
-| **Coût par entretien complété** | **≈ 3,00 $** | **≈ 0,90 $** |
+| Destination | Tarif à la minute |
+|---|---|
+| Cameroun `+237` | de **0,410 à 0,787 $** |
+| Cambodge `+855` | de **0,112 à 0,132 $** |
+
+Tout ce qui suit retient le **haut** de chaque fourchette. Une économie unitaire qu'on
+présente à un jury doit se tromper du côté qui coûte, jamais du côté qui arrange, et la
+conclusion ne doit pas dépendre de l'endroit où l'on se place dans la plage.
+`tests/test_omnibus.py` refait le calcul au tarif bas et vérifie qu'elle tient.
+
+| | Twilio, Cameroun | Twilio, Cambodge | Partenariat opérateur |
+|---|---|---|---|
+| Minutes voix (2 min 30) | **1,97 $** | **0,33 $** | ~0,38 $ *(hypothèse)* |
+| Transcription | ~0,03 $ | ~0,03 $ | ~0,03 $ |
+| Codage | ~0,01 $ | ~0,01 $ | ~0,01 $ |
+| Synthèse vocale | 0 $ *(pré-synthétisée)* | 0 $ | 0 $ |
+| Incitation au répondant | ~0,35 $ | ~0,35 $ | ~0,35 $ |
+| Quote-part des appels qui n'aboutissent pas | ~0,60 $ | ~0,60 $ | ~0,12 $ |
+| **Coût par entretien complété** | **≈ 3,00 $** | **≈ 1,32 $** | **≈ 0,90 $** |
+
+La colonne cambodgienne reprend telle quelle la part fixe camerounaise, faute de donnée
+propre. Inventer une incitation cambodgienne plausible reviendrait à fabriquer le chiffre
+qui décide de la conclusion, et c'est précisément ce que ce projet refuse de faire.
 
 La dernière ligne avant le total est celle que personne ne publie : un répondeur qui
 décroche est facturé, un refus qui décroche aussi. Avec un taux d'aboutissement autour
@@ -340,8 +355,14 @@ de 20 %, chaque entretien complété porte la facture de ceux qui ont échoué.
 
 Points de comparaison : **20 à 60 $** en face-à-face, **5 à 15 $** en centre d'appels
 humain. Le tarif opérateur reste une hypothèse tant qu'aucun accord n'est signé, et
-c'est lui qui décide de la viabilité : sans accord de minutes, une vague mensuelle de
-3 000 ménages coûte plus qu'elle ne rapporte. Un identifiant d'appelant local n'est pas
+c'est lui qui décide de la viabilité **au Cameroun** : sans accord de minutes, une vague
+mensuelle de 3 000 ménages y coûte 8 363 $ pour 3 000 $ de recette.
+
+**Le pays appelé décide autant que l'accord.** La même vague, le même code, le même
+opérateur, mais composée au Cambodge, coûte 3 874 $ : elle est presque à l'équilibre
+sans qu'aucun accord n'ait été signé, et elle dégage 926 $ de marge dès que la question
+se vend 800 $ au lieu de 500. Ces trois chiffres ne sont pas recopiés ici, ils sortent
+de `ndara/omnibus.py` et trois tests les tiennent. Un identifiant d'appelant local n'est pas
 un confort non plus : c'est une variable de la qualité statistique, parce qu'un numéro
 étranger fait chuter le taux de décrochage.
 

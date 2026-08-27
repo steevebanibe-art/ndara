@@ -117,6 +117,12 @@ def audit_interview(q: Questionnaire, iv: Interview, turns: Sequence[Turn]) -> I
 
     # -- qualité de transcription --
     confs = [t.asr_confidence for t in answered if t.asr_confidence is not None]
+    # Un tour sans confiance n'est pas un tour mal transcrit. Les modèles
+    # téléphoniques de Twilio n'en fournissent pas, et le taire donnerait un
+    # rapport de qualité qui parle d'une mesure qu'il n'a pas faite.
+    sans = [t for t in answered if t.asr_confidence is None and t.method != "dtmf"]
+    if sans:
+        details["asr_confiance_non_fournie"] = len(sans)
     if confs:
         details["asr_confidence_mean"] = round(statistics.fmean(confs), 3)
         if statistics.fmean(confs) < 0.55:

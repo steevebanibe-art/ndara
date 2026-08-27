@@ -378,12 +378,26 @@ class TestTelephonie(unittest.TestCase):
         # Et pas un mot en voix de secours : la relance est pré-synthétisée.
         self.assertNotIn("<Say", xml)
 
-    def test_la_reconnaissance_est_reglee_pour_des_reponses_breves(self):
+    def test_la_reconnaissance_emploie_un_modele_telephonique(self):
+        """Le support commande le modèle, pas seulement la durée des réponses.
+
+        Réglé sur `googlev2_short` jusqu'au 27 août 2026 : un modèle taillé
+        pour des réponses brèves, ce qui était le bon raisonnement, mais
+        entraîné sur de l'audio pleine bande, ce qui était le mauvais support.
+        Une ligne téléphonique ne transporte que 8 kHz. Mesuré sur le premier
+        vrai appel : un « oui » en français camerounais transcrit « puis-je ».
+
+        La liste ci-dessous est celle des modèles téléphoniques de Twilio. On
+        peut passer de l'un à l'autre, jamais revenir à un modèle pleine bande.
+        """
         from ndara.providers.telephony import prompt_to_twiml
         xml = prompt_to_twiml({"kind": "question", "text": "Le prix ?",
                                "allow_voice": True, "options": []},
                               action_url="https://x/step")
-        self.assertIn('speechModel="googlev2_short"', xml)
+        telephoniques = ("phone_call", "googlev2_telephony",
+                         "googlev2_telephony_short")
+        self.assertTrue(any(f'speechModel="{m}"' in xml for m in telephoniques),
+                        f"modèle non téléphonique dans : {xml}")
         # Une réponse d'enquête ne se fait pas censurer en « f*** » : ce qui
         # est dit est la donnée.
         self.assertIn('profanityFilter="false"', xml)
@@ -909,6 +923,321 @@ class TestSamplingAndPrivacy(unittest.TestCase):
         self.assertIn("[NOM]", redact_text("je m'appelle Amadou Bello"))
 
 
+class TestAppelEntrant(unittest.TestCase):
+    """NDARA décroche quand c'est l'autre qui appelle.
+
+    Le sens de l'appel change deux choses et une seule est visible. Twilio
+    envoie « Direction: inbound », et surtout il inverse les rôles : « To »
+    devient notre propre numéro, « From » celui du répondant. Prendre « To »
+    sans regarder le sens enregistrerait tous les entretiens entrants sous un
+    seul numéro, le nôtre, ce qui saborde silencieusement la déduplication et
+    le respect des retraits.
+
+    Ce chemin compte parce qu'il ne dépend d'aucune autorisation d'appel
+    sortant : la liste noire anti-fraude de l'opérateur ne s'applique qu'à ce
+    qu'on compose, jamais à ce qu'on reçoit.
+    """
+
+    JETON = "jeton_de_test_1234567890"
+
+    def _serveur(self):
+        import importlib.util, os, threading
+        from http.server import ThreadingHTTPServer
+        spec = importlib.util.spec_from_file_location("srv_in", ROOT / "web" / "server.py")
+        srv = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(srv)
+        tmp = tempfile.mkdtemp()
+        srv.APP = srv.App(str(Path(tmp) / "t.db"))
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), srv.Handler)
+        port = httpd.server_address[1]
+        os.environ["TWILIO_AUTH_TOKEN"] = self.JETON
+        os.environ["NDARA_PUBLIC_URL"] = f"http://127.0.0.1:{port}"
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        self.addCleanup(httpd.shutdown)
+        return srv, port
+
+    def _poster(self, port, chemin, form):
+        import base64, hashlib, hmac, urllib.parse, urllib.request
+        url = f"http://127.0.0.1:{port}{chemin}"
+        brut = url + "".join(f"{k}{form[k]}" for k in sorted(form))
+        sig = base64.b64encode(
+            hmac.new(self.JETON.encode(), brut.encode(), hashlib.sha1).digest()).decode()
+        req = urllib.request.Request(
+            url, data=urllib.parse.urlencode(form).encode(),
+            headers={"Content-Type": "application/x-www-form-urlencoded",
+                     "X-Twilio-Signature": sig})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return r.status, r.read().decode("utf-8")
+
+    def test_un_appel_entrant_ouvre_un_entretien_et_annonce_l_ia(self):
+        srv, port = self._serveur()
+        code, xml = self._poster(port, "/twiml/start?essai=1&lang=fr", {
+            "CallSid": "CAentrant0001", "From": "+237690000001",
+            "To": "+16193041285", "Direction": "inbound", "CallStatus": "ringing"})
+        self.assertEqual(code, 200)
+        self.assertIn("<Response>", xml)
+        # La toute première chose entendue est l'annonce, jamais une question.
+        self.assertIn("announce", xml)
+
+    def test_en_entrant_le_repondant_est_l_appelant_pas_notre_numero(self):
+        srv, port = self._serveur()
+        self._poster(port, "/twiml/start?essai=1&lang=fr", {
+            "CallSid": "CAentrant0002", "From": "+237690000002",
+            "To": "+16193041285", "Direction": "inbound", "CallStatus": "ringing"})
+        ivs = srv.APP.store.list_interviews()
+        self.assertEqual(len(ivs), 1)
+        iv = srv.APP.store.get_interview(ivs[0].id if hasattr(ivs[0], "id") else ivs[0])
+        self.assertNotIn("6193041285", str(iv.msisdn or ""))
+
+    def test_en_sortant_le_repondant_reste_le_numero_compose(self):
+        """La correction ne doit pas casser le sens qui marchait déjà."""
+        srv, port = self._serveur()
+        self._poster(port, "/twiml/start?essai=1&lang=fr", {
+            "CallSid": "CAsortant0003", "From": "+16193041285",
+            "To": "+237690000003", "Direction": "outbound-api",
+            "CallStatus": "in-progress"})
+        ivs = srv.APP.store.list_interviews()
+        iv = srv.APP.store.get_interview(ivs[0].id if hasattr(ivs[0], "id") else ivs[0])
+        self.assertNotIn("6193041285", str(iv.msisdn or ""))
+
+
+class TestAppelEntrant(unittest.TestCase):
+    """NDARA décroche quand c'est l'autre qui appelle, et vérifie la signature.
+
+    Ce chemin compte doublement. Il ne dépend d'aucune autorisation d'appel
+    sortant, donc il fonctionne même quand la destination est sur la liste
+    noire anti-fraude de l'opérateur. Et c'est celui que le jury empruntera
+    s'il compose le numéro lui-même.
+
+    Le piège qu'il porte a coûté une soirée le 26 août 2026 : un appel entrant
+    venu de l'étranger arrive avec une dizaine de paramètres vides, la ville et
+    la région de l'appelant étant inconnues. Twilio les compte dans sa
+    signature. Le serveur les jetait. Résultat : jeton valide, sortants qui
+    passent, entrants tous refusés en 403.
+    """
+
+    JETON = "jeton_de_test_1234567890"
+
+    # Ce qu'un vrai appel entrant transporte, vides compris. Les champs
+    # géographiques de l'appelant sont vides parce que l'appel vient du
+    # Cameroun vers un numéro américain.
+    ENTRANT = {
+        "AccountSid": "AC00000000000000000000000000000000",
+        "CallSid": "CA11111111111111111111111111111111",
+        "CallStatus": "ringing", "Direction": "inbound", "ApiVersion": "2010-04-01",
+        "From": "+237658841523", "To": "+16193041285",
+        "Caller": "+237658841523", "Called": "+16193041285",
+        "FromCity": "", "FromState": "", "FromZip": "", "FromCountry": "CM",
+        "CallerCity": "", "CallerState": "", "CallerZip": "", "CallerCountry": "CM",
+        "ToCity": "SAN DIEGO", "ToState": "CA", "ToZip": "", "ToCountry": "US",
+        "CalledCity": "SAN DIEGO", "CalledState": "CA", "CalledZip": "",
+        "CalledCountry": "US", "StirVerstat": "",
+    }
+
+    def _serveur(self):
+        import importlib.util, os, threading
+        from http.server import ThreadingHTTPServer
+        spec = importlib.util.spec_from_file_location("srv_in", ROOT / "web" / "server.py")
+        srv = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(srv)
+        srv.APP = srv.App(str(Path(tempfile.mkdtemp()) / "t.db"))
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), srv.Handler)
+        port = httpd.server_address[1]
+        os.environ["TWILIO_AUTH_TOKEN"] = self.JETON
+        os.environ["NDARA_PUBLIC_URL"] = f"http://127.0.0.1:{port}"
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        self.addCleanup(httpd.shutdown)
+        return srv, port
+
+    def _poster(self, port, chemin, form):
+        import base64, hashlib, hmac, urllib.parse, urllib.request, urllib.error
+        url = f"http://127.0.0.1:{port}{chemin}"
+        # La signature de Twilio, à la lettre : l'URL complète puis chaque
+        # paramètre par ordre alphabétique, vides compris.
+        brut = url + "".join(f"{k}{form[k]}" for k in sorted(form))
+        sig = base64.b64encode(
+            hmac.new(self.JETON.encode(), brut.encode(), hashlib.sha1).digest()).decode()
+        req = urllib.request.Request(
+            url, data=urllib.parse.urlencode(form).encode(),
+            headers={"Content-Type": "application/x-www-form-urlencoded",
+                     "X-Twilio-Signature": sig})
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                return r.status, r.read().decode("utf-8")
+        except urllib.error.HTTPError as e:
+            return e.code, e.read().decode("utf-8")
+
+    def test_un_entrant_avec_des_parametres_vides_est_accepte(self):
+        """Le test qui aurait épargné la soirée du 26 août."""
+        srv, port = self._serveur()
+        code, xml = self._poster(port, "/twiml/start?essai=1&lang=fr", self.ENTRANT)
+        self.assertEqual(code, 200, f"refusé : {xml[:120]}")
+        self.assertIn("<Response>", xml)
+        self.assertIn("announce", xml)      # l'annonce d'IA, avant toute question
+
+    def test_une_signature_forgee_reste_refusee(self):
+        """La tolérance aux vides ne doit pas ouvrir la porte."""
+        srv, port = self._serveur()
+        import urllib.parse, urllib.request, urllib.error
+        url = f"http://127.0.0.1:{port}/twiml/start"
+        req = urllib.request.Request(
+            url, data=urllib.parse.urlencode(self.ENTRANT).encode(),
+            headers={"Content-Type": "application/x-www-form-urlencoded",
+                     "X-Twilio-Signature": "AAAAbbbbCCCCddddEEEEffffGGGG="})
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                code = r.status
+        except urllib.error.HTTPError as e:
+            code = e.code
+        self.assertEqual(code, 403)
+
+    def test_en_entrant_le_repondant_est_l_appelant_pas_notre_numero(self):
+        """« To » est notre numéro quand c'est l'autre qui compose.
+
+        Le prendre pour le répondant rangerait tous les entretiens entrants
+        sous un seul et même numéro, le nôtre.
+        """
+        srv, port = self._serveur()
+        code, _ = self._poster(port, "/twiml/start?essai=1&lang=fr", self.ENTRANT)
+        self.assertEqual(code, 200)
+        from ndara.models import hash_msisdn
+        ivs = srv.APP.store.interviews()
+        self.assertEqual(len(ivs), 1)
+        # Le numéro est haché, donc y chercher des chiffres ne prouverait rien.
+        # On compare au haché du bon numéro, et à celui du mauvais.
+        self.assertEqual(ivs[0].respondent_hash, hash_msisdn(self.ENTRANT["From"]))
+        self.assertNotEqual(ivs[0].respondent_hash, hash_msisdn(self.ENTRANT["To"]))
+
+
+class TestClavierSurQuestionNumerique(unittest.TestCase):
+    """La relance promet les touches : elles doivent exister.
+
+    Trouvé pendant le premier vrai appel entrant, le 26 août 2026. Une question
+    numérique n'a pas de modalités, donc aucune touche ne lui est attribuée
+    d'avance, et l'écoute n'acceptait que la parole. Mais la relance de dernier
+    recours dit « utilisez les touches de votre téléphone », dans la voix de
+    studio. On promettait un filet qui n'existait pas, et précisément sur les
+    questions où la transcription échoue le plus : celles où il faut dire un
+    montant.
+    """
+
+    def _twiml(self, input_type, options):
+        from ndara.providers.telephony import prompt_to_twiml
+        return prompt_to_twiml(
+            {"kind": "question", "step_id": "s", "text": "Combien ?",
+             "options": options, "allow_voice": True,
+             "allow_dtmf": bool(options), "input_type": input_type, "done": False},
+            action_url="https://exemple/step")
+
+    def test_une_question_numerique_accepte_les_touches(self):
+        x = self._twiml("number", [])
+        self.assertIn('input="dtmf speech"', x)
+        # Pas de longueur imposée : « 1500 » ne doit pas être coupé à « 1 ».
+        self.assertNotIn("numDigits", x)
+        self.assertIn('finishOnKey="#"', x)
+
+    def test_une_question_a_modalites_garde_une_seule_touche(self):
+        x = self._twiml("choice", [{"code": "a", "dtmf": "1", "label": "A"}])
+        self.assertIn('input="dtmf speech"', x)
+        self.assertIn('numDigits="1"', x)
+
+    def test_une_question_libre_n_ecoute_que_la_parole(self):
+        """Une réponse ouverte ne se tape pas : lui offrir le clavier n'a pas de sens."""
+        x = self._twiml("open", [])
+        self.assertIn('input="speech"', x)
+        self.assertNotIn('input="dtmf speech"', x)
+
+
+class TestComprehensionAuTelephone(unittest.TestCase):
+    """Ce que la reconnaissance reçoit, et ce qu'on fait de ce qu'elle rend.
+
+    Écrit le 27 août 2026, après le premier vrai appel entrant. Un « oui » en
+    français camerounais était revenu transcrit « puis-je », confiance 0,0, et
+    l'entretien s'était arrêté là.
+    """
+
+    def _twiml(self, prompt):
+        from ndara.providers.telephony import prompt_to_twiml
+        base = {"kind": "question", "text": "T", "allow_voice": True,
+                "options": [], "done": False}
+        base.update(prompt)
+        base.setdefault("allow_dtmf", bool(base.get("options")))
+        return prompt_to_twiml(base, action_url="https://x/step")
+
+    def _indices(self, xml):
+        import re
+        m = re.search(r'hints="([^"]*)"', xml)
+        return m.group(1).split(",") if m else []
+
+    def test_le_consentement_annonce_les_facons_naturelles_de_dire_oui(self):
+        """Personne ne répond « Oui » tout court à une question de consentement.
+
+        Le codeur sait depuis toujours lire « d'accord » ou « bien sûr ». La
+        reconnaissance, elle, n'en savait rien : elle ne recevait que
+        « 1, Oui, 2, Non ». Les deux moitiés du problème vivaient dans deux
+        fichiers, et c'est pour ça que le trou ne se voyait pas.
+        """
+        xml = self._twiml({"kind": "consent", "input_type": "choice", "options": [
+            {"code": "yes", "dtmf": "1", "label": "Oui"},
+            {"code": "no", "dtmf": "2", "label": "Non"}]})
+        indices = self._indices(xml)
+        for attendu in ("d accord", "bien sur", "ouais", "tout a fait"):
+            self.assertIn(attendu, indices)
+        self.assertIn("Oui", indices)      # le libellé reste, il ne disparaît pas
+        self.assertIn("1", indices)        # la touche aussi
+
+    def test_une_question_numerique_annonce_les_nombres_et_son_unite(self):
+        """C'est là que la reconnaissance travaille le plus, et elle n'avait rien."""
+        xml = self._twiml({"input_type": "number", "unit": "FCFA"})
+        indices = self._indices(xml)
+        for attendu in ("cinq", "mille", "cent", "FCFA"):
+            self.assertIn(attendu, indices)
+
+    def test_les_indices_ne_depassent_pas_la_limite_de_twilio(self):
+        """500 entrées de 100 caractères, et pas une de plus."""
+        xml = self._twiml({"input_type": "number", "unit": "FCFA"})
+        indices = self._indices(xml)
+        self.assertLessEqual(len(indices), 500)
+        for i in indices:
+            self.assertLessEqual(len(i), 100)
+
+    def test_une_confiance_de_zero_est_une_absence_pas_une_mesure(self):
+        """Sinon tout entretien téléphonique réel serait déclaré dégradé.
+
+        Les modèles téléphoniques de Twilio renvoient 0.0 même sur une
+        transcription parfaite. Pris pour une mesure, ce zéro tombe sous le
+        seuil de 0,55 de l'audit et invente un défaut de qualité.
+        """
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("srv_conf", ROOT / "web" / "server.py")
+        srv = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(srv)
+        self.assertIsNone(srv._confiance_twilio("0.0"))
+        self.assertIsNone(srv._confiance_twilio(""))
+        self.assertIsNone(srv._confiance_twilio(None))
+        self.assertIsNone(srv._confiance_twilio("bavardage"))
+        # Une vraie mesure, elle, doit passer intacte.
+        self.assertAlmostEqual(srv._confiance_twilio("0.87"), 0.87)
+
+    def test_l_audit_compte_les_tours_sans_confiance_au_lieu_de_les_taire(self):
+        """Une mesure manquante se publie, elle ne se remplace pas."""
+        from ndara.audit import audit_interview
+        from ndara.models import Interview, Turn
+        q = Questionnaire.load(QPATH)
+        etapes = [st.id for st in q.steps][:3]
+        iv = Interview(id="iv1", questionnaire_id=q.id, language="fr", channel="phone",
+                       respondent_hash="h", stratum="MTN")
+        tours = [Turn(interview_id="iv1", seq=i, step_id=sid, code="a",
+                      method="voice", asr_confidence=None, relances=0,
+                      duration_ms=4000)
+                 for i, sid in enumerate(etapes)]
+        a = audit_interview(q, iv, tours)
+        self.assertEqual(a.details.get("asr_confiance_non_fournie"), len(etapes))
+        # Aucune confiance mesurée ne doit produire un défaut de transcription.
+        self.assertNotIn("transcription_faible", a.flags)
+        self.assertNotIn("asr_confidence_mean", a.details)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 
@@ -1014,3 +1343,84 @@ class TestDiagnosticTelephonie(unittest.TestCase):
         res = tel.verifier()
         self.assertFalse(res["ok"])
         self.assertIn("20003", res["raison"])
+
+
+# --------------------------------------------------------------------------
+# Plusieurs entretiens en meme temps
+#
+# Le serveur est un ThreadingHTTPServer : un fil par requete. La base etait
+# ouverte une seule fois et partagee par tous ces fils, avec
+# check_same_thread=False, qui desactive le garde-fou sans rendre la connexion
+# utilisable a plusieurs pour autant.
+#
+# Ce n'etait pas un melange de donnees, c'etait un plantage. Mesure sur douze
+# entretiens simultanes menes par HTTP : deux aboutissaient, dix mouraient sur
+# « sqlite3.InterfaceError: bad parameter or other API misuse » ou sur
+# « SystemError: error return without exception set » leve par conn.commit().
+# La campagne d'appels reels accepte jusqu'a dix appels simultanes : elle
+# serait tombee des le deuxieme decrochage, en production, en depensant de
+# l'argent.
+# --------------------------------------------------------------------------
+class TestEntretiensSimultanes(unittest.TestCase):
+
+    def test_douze_entretiens_menes_en_meme_temps(self):
+        """Aucun ne tombe, et aucun ne recupere la reponse d'un autre."""
+        import threading
+
+        store, q, _, tmp = fresh_engine()
+        # Chaque fil a SON moteur, comme le serveur qui partage les siens, et
+        # tous ecrivent dans la meme base : c'est la configuration reelle.
+        moteurs = [InterviewEngine(store, q, RulesCoder(),
+                                   CorpusWriter(store, Path(tmp) / "corpus"))
+                   for _ in range(12)]
+        ennuis: list[str] = []
+        produits: dict[int, str] = {}
+        verrou = threading.Lock()
+
+        def mene(n: int) -> None:
+            try:
+                moteur = moteurs[n]
+                p = moteur.start(language="fr", stratum="MTN", channel="phone")
+                iid = p.interview_id
+                for _ in range(30):
+                    if p.done:
+                        break
+                    if p.kind == "consent":
+                        p = moteur.submit(iid, dtmf="1")
+                    elif p.options:
+                        touches = [o for o in p.options if o.get("dtmf")]
+                        p = (moteur.submit(iid, dtmf=touches[n % len(touches)]["dtmf"])
+                             if touches else moteur.submit(iid, text="oui"))
+                    elif p.kind == "announce":
+                        p = moteur.submit(iid)
+                    else:
+                        # Le montant propre a ce fil. Tout melange le deplacerait.
+                        p = moteur.submit(iid, text=str(1000 + n))
+                with verrou:
+                    produits[n] = iid
+            except Exception as exc:                  # noqa: BLE001
+                with verrou:
+                    ennuis.append(f"fil {n} : {type(exc).__name__} {exc}")
+
+        fils = [threading.Thread(target=mene, args=(i,)) for i in range(12)]
+        for f in fils:
+            f.start()
+        for f in fils:
+            f.join(timeout=60)
+
+        self.assertEqual(ennuis, [], "des entretiens simultanes ont echoue")
+        self.assertEqual(len(produits), 12)
+        self.assertEqual(len(set(produits.values())), 12,
+                         "deux fils ont partage le meme entretien")
+
+        # Aucun entretien ne doit porter le montant d'un autre fil.
+        famille = {float(1000 + k) for k in range(12)}
+        for n, iid in produits.items():
+            marques = {t.value_num for t in store.turns(iid)
+                       if t.value_num is not None} & famille
+            self.assertLessEqual(
+                len(marques), 1,
+                f"l'entretien du fil {n} porte plusieurs montants : {sorted(marques)}")
+            if marques:
+                self.assertEqual(marques, {float(1000 + n)},
+                                 f"l'entretien du fil {n} porte le montant d'un autre")
