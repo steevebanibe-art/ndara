@@ -1382,6 +1382,33 @@ class TestDiagnosticTelephonie(unittest.TestCase):
                             for e in res["ennuis"]),
                         "le refus doit nommer le pays ET rappeler que l'entrant reste ouvert")
 
+    def test_un_pays_ouvert_mais_ferme_aux_plages_signalees_est_nomme(self):
+        """Le cas reel du Cameroun, et celui que le diagnostic ratait.
+
+        Twilio classe des PLAGES, pas des pays. Ne lire que « low risk »
+        repondait « oui » sur un pays ou l'appel echoue, parce que les mobiles
+        camerounais tombent dans les plages signalees pour fraude aux revenus
+        d'interconnexion, et que ce sont exactement les numeros qu'une enquete
+        compose. Un instrument qui rassure a tort est pire qu'un instrument
+        muet.
+        """
+        tel = self._adaptateur({
+            "/Balance.json": {"balance": "20.00", "currency": "USD"},
+            "IncomingPhoneNumbers": BRANCHE_CLASSE,
+            "DialingPermissions/Countries/CM": {
+                "name": "Cameroon", "country_codes": ["237"],
+                "low_risk_numbers_enabled": True,
+                "high_risk_tollfraud_numbers_enabled": False,
+                "high_risk_special_numbers_enabled": False},
+            ".json": self.COMPTE})
+        res = tel.verifier(["CM"])
+        self.assertTrue(res["pays"]["CM"]["ordinaires"])
+        self.assertFalse(res["pays"]["CM"]["plages_signalees"])
+        ennui = " ".join(res["ennuis"])
+        self.assertIn("plages signalées", ennui)
+        self.assertIn("ENTRANT", ennui,
+                      "il faut dire ce qui reste possible, pas seulement ce qui est ferme")
+
     def test_des_identifiants_refuses_restent_concluants(self):
         """La fiche du compte est la seule lecture dont l'échec tranche."""
         tel = self._adaptateur({".json": (None, "HTTP 401 · 20003 · Authenticate")})

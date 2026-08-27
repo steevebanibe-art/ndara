@@ -372,20 +372,44 @@ class TwilioTelephony:
             if fiche is None:
                 res["pays"][iso] = {"lisible": False, "raison": refus_pays}
                 continue
-            ouvert = bool(fiche.get("low_risk_numbers_enabled"))
+            # TROIS DROITS, ET PAS UN SEUL
+            #
+            # Ne lire que « low risk » donnait une reponse fausse et
+            # rassurante. Twilio classe des PLAGES de numeros, pas des pays :
+            # un pays peut etre ouvert aux numeros ordinaires et ferme aux
+            # plages signalees pour fraude. Or les mobiles camerounais en 237
+            # 6xx sont une cible classique de la fraude aux revenus
+            # d'interconnexion, et ce sont exactement les numeros qu'une
+            # enquete par telephone compose.
+            #
+            # Le diagnostic disait donc « oui » sur un pays ou l'appel echoue.
+            # Un instrument qui rassure a tort est pire qu'un instrument muet.
+            nom = fiche.get("name", iso)
+            ordinaires = bool(fiche.get("low_risk_numbers_enabled"))
+            fraude = bool(fiche.get("high_risk_tollfraud_numbers_enabled"))
+            speciaux = bool(fiche.get("high_risk_special_numbers_enabled"))
             res["pays"][iso] = {
-                "lisible": True, "nom": fiche.get("name", iso), "sortant": ouvert,
+                "lisible": True, "nom": nom,
+                "ordinaires": ordinaires, "plages_signalees": fraude,
+                "services_speciaux": speciaux,
+                "sortant": ordinaires,          # conserve pour l'affichage court
                 "indicatifs": fiche.get("country_codes", []),
             }
-            if not ouvert:
+            if not ordinaires:
                 res["ennuis"].append(
-                    f"Appels sortants vers {fiche.get('name', iso)} ({iso}) : refusés par "
-                    "l'opérateur. Ce pays est bloqué par défaut contre la fraude aux "
-                    "revenus d'interconnexion, et le blocage ne se voit qu'au moment de "
-                    "composer, une fois l'appel facturé. Console Twilio, Voice, Settings, "
-                    "Geo Permissions : si le pays y est refusable, cochez-le ; s'il est "
-                    "verrouillé, il faut le demander au support. L'appel ENTRANT, lui, "
-                    "reste ouvert : ce numéro peut recevoir depuis ce pays.")
+                    f"Appels sortants vers {nom} ({iso}) : refusés. Le pays entier est "
+                    "fermé. Console Twilio, Voice, Settings, Geo Permissions. L'appel "
+                    "ENTRANT reste ouvert : ce numéro peut recevoir depuis ce pays.")
+            elif not fraude:
+                res["ennuis"].append(
+                    f"Appels sortants vers {nom} ({iso}) : les numéros ordinaires sont "
+                    "autorisés, mais PAS les plages signalées pour fraude aux revenus "
+                    "d'interconnexion. Beaucoup de plages mobiles y figurent, et ce sont "
+                    "justement celles qu'une enquête compose. C'est la case « High-risk "
+                    "toll fraud numbers » de Voice, Settings, Geo Permissions : cochez-la "
+                    "si elle est ouverte, sinon elle se demande au support et elle engage "
+                    "votre responsabilité sur la facture. L'appel ENTRANT, lui, reste "
+                    "ouvert sans condition : ce numéro peut recevoir depuis ce pays.")
 
         return res
 

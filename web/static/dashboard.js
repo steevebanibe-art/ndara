@@ -718,11 +718,14 @@ el("btn-verif").onclick = async () => {
   const pays = r.pays || {};
   const isos = Object.keys(pays);
   if (isos.length) {
-    lignes.push("Appels sortants autorisés : " + isos.map((i) => {
+    lignes.push("<strong>Appels sortants, pays par pays</strong><ul>" + isos.map((i) => {
       const p = pays[i];
-      if (!p.lisible) return echapper(i) + " (illisible)";
-      return echapper(p.nom || i) + " " + (p.sortant ? "oui" : "NON");
-    }).join(" · ") + ".");
+      if (!p.lisible) return "<li>" + echapper(i) + " : illisible</li>";
+      const etat = !p.ordinaires ? "pays fermé"
+        : p.plages_signalees ? "ouvert, plages signalées comprises"
+        : "ouvert aux numéros ordinaires, PAS aux plages signalées pour fraude";
+      return "<li>" + echapper(p.nom || i) + " : " + etat + "</li>";
+    }).join("") + "</ul>");
   }
 
   const ennuis = r.ennuis || [];
