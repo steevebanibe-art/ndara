@@ -1045,6 +1045,29 @@ class Handler(BaseHTTPRequestHandler):
             # contient des prefixes fermes.
             corps = self._read_json() or {}
             res = APP.tel.verifier(pays, str(corps.get("numero") or "").strip())
+            # LE DIAGNOSTIC NE DOIT PAS CONTREDIRE CE QU'IL A LUI-MEME ENREGISTRE
+            #
+            # Il a annonce trois fois « rien ne s'oppose a un appel » alors
+            # qu'un appel venait d'etre refuse. Tous les droits peuvent etre
+            # ouverts et l'operateur refuser quand meme : une restriction de
+            # compte, une revue anti-fraude, ou une permission qui n'a pas
+            # encore atteint le service vocal. Aucune de ces trois causes ne
+            # se lit dans les permissions, mais toutes les trois se lisent
+            # dans le journal des appels.
+            refus = APP.store.dernier_refus_appel()
+            if refus and res.get("ok") and not res.get("ennuis"):
+                res["ennuis"].append(
+                    "Attention : tous les droits sont ouverts, et pourtant le dernier "
+                    f"appel a été refusé par l'opérateur ({refus['quand']}) : "
+                    f"« {refus['erreur']} ». Les permissions ne sont donc pas la cause. "
+                    "Trois pistes, dans cet ordre : la permission vient d'être ouverte et "
+                    "n'a pas encore atteint le service vocal, attendez quelques minutes ; "
+                    "ou le compte porte une restriction de revue anti-fraude, fréquente "
+                    "sur un compte récent qui compose une destination à risque ; ou ce "
+                    "numéro précis est bloqué. Pour trancher, appelez un numéro d'un "
+                    "AUTRE pays, par exemple votre propre numéro Twilio : s'il passe, la "
+                    "restriction vise ce pays et se règle au support avec le code de "
+                    "l'erreur.")
             APP.store.log("telephony_verification", None, ok=res.get("ok"),
                           etat=res.get("etat"), type=res.get("type"))
             if not res.get("ok"):

@@ -307,6 +307,28 @@ class Store:
         self.conn.commit()
 
     @_serialise
+    def dernier_refus_appel(self) -> dict[str, Any] | None:
+        """Le dernier appel que l'operateur a refuse, s'il y en a un.
+
+        Le diagnostic de telephonie a annonce trois fois « rien ne s'oppose a
+        un appel » alors que le fondateur venait d'en voir un refuse. Un
+        instrument qui contredit la realite qu'il a lui-meme enregistree est
+        pire qu'un instrument muet : il envoie chercher ailleurs. Le refus est
+        deja dans le journal, il suffisait de le relire.
+        """
+        for at, brut in self.conn.execute(
+                "SELECT at, payload FROM events WHERE kind IN "
+                "('telephony_appel_essai','telephony_campagne_appel') "
+                "ORDER BY at DESC LIMIT 40"):
+            try:
+                d = json.loads(brut)
+            except Exception:
+                continue
+            if d.get("ok") is False and d.get("erreur"):
+                return {"quand": at, "erreur": str(d["erreur"])[:300]}
+        return None
+
+    @_serialise
     def close(self) -> None:
         self.conn.close()
 

@@ -1455,6 +1455,28 @@ class TestDiagnosticTelephonie(unittest.TestCase):
         self.assertFalse(res["pays"]["CM"]["numero_dans_prefixe_special"])
         self.assertEqual(res["ennuis"], [])
 
+    def test_le_journal_retient_le_dernier_appel_refuse(self):
+        """Le diagnostic ne doit pas contredire ce qu'il a lui-meme enregistre.
+
+        Il a annonce trois fois « rien ne s'oppose a un appel » alors qu'un
+        appel venait d'etre refuse. Tous les droits peuvent etre ouverts et
+        l'operateur refuser quand meme : restriction de compte, revue
+        anti-fraude, ou permission qui n'a pas encore atteint le service
+        vocal. Aucune ne se lit dans les permissions, toutes se lisent dans
+        le journal.
+        """
+        store, _q, _m, _tmp = fresh_engine()
+        self.assertIsNone(store.dernier_refus_appel())
+        store.log("telephony_appel_essai", None, ok=True, call_sid="CA1")
+        self.assertIsNone(store.dernier_refus_appel(),
+                          "un appel accepte n'est pas un refus")
+        store.log("telephony_appel_essai", None, ok=False,
+                  erreur="HTTP 400 . 21216 . Account not allowed to call +237658841523")
+        refus = store.dernier_refus_appel()
+        self.assertIsNotNone(refus)
+        self.assertIn("21216", refus["erreur"])
+        self.assertTrue(refus["quand"])
+
     def test_des_identifiants_refuses_restent_concluants(self):
         """La fiche du compte est la seule lecture dont l'échec tranche."""
         tel = self._adaptateur({".json": (None, "HTTP 401 · 20003 · Authenticate")})
