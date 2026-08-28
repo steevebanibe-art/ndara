@@ -678,8 +678,11 @@ const echapper = (s) =>
 el("btn-verif").onclick = async () => {
   el("btn-verif").disabled = true;
   el("verif-etat").textContent = "Interrogation de l'opérateur…";
-  const r = await fetch("/api/telephonie/verifier", { method: "POST" })
-    .then((x) => x.json()).catch(() => ({ ok: false, raison: "réseau" }));
+  const vise = (el("essai-num").value || "").trim();
+  const r = await fetch("/api/telephonie/verifier", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ numero: vise }),
+  }).then((x) => x.json()).catch(() => ({ ok: false, raison: "réseau" }));
   el("btn-verif").disabled = false;
 
   if (!r.ok) {
@@ -718,13 +721,26 @@ el("btn-verif").onclick = async () => {
   const pays = r.pays || {};
   const isos = Object.keys(pays);
   if (isos.length) {
-    lignes.push("<strong>Appels sortants, pays par pays</strong><ul>" + isos.map((i) => {
+    /* Twilio publie TROIS droits par pays, et un pays peut être ouvert sur
+     * deux d'entre eux et fermé sur le troisième. Résumer par « ouvert »
+     * a déjà fait échouer un appel après un diagnostic rassurant : on les
+     * affiche tous les trois, et on nomme le numéro testé. */
+    const oui = (b) => (b ? "oui" : "<b>NON</b>");
+    lignes.push("<strong>Appels sortants, droit par droit</strong><ul>" + isos.map((i) => {
       const p = pays[i];
       if (!p.lisible) return "<li>" + echapper(i) + " : illisible</li>";
-      const etat = !p.ordinaires ? "pays fermé"
-        : p.plages_signalees ? "ouvert, plages signalées comprises"
-        : "ouvert aux numéros ordinaires, PAS aux plages signalées pour fraude";
-      return "<li>" + echapper(p.nom || i) + " : " + etat + "</li>";
+      let l = "<li>" + echapper(p.nom || i) + " : ordinaires " + oui(p.ordinaires)
+        + " · plages signalées " + oui(p.plages_signalees)
+        + " · services spéciaux " + oui(p.services_speciaux);
+      if (p.numero_teste) {
+        l += "<br>Numéro testé " + echapper(p.numero_teste) + " : "
+          + (p.numero_dans_prefixe_special
+              ? "<b>dans un préfixe à haut risque</b>"
+              : "dans aucun préfixe listé")
+          + (p.prefixes_nombre !== undefined
+              ? " (" + p.prefixes_nombre + " préfixes publiés pour ce pays)" : "");
+      }
+      return l + "</li>";
     }).join("") + "</ul>");
   }
 

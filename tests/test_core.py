@@ -1409,6 +1409,52 @@ class TestDiagnosticTelephonie(unittest.TestCase):
         self.assertIn("ENTRANT", ennui,
                       "il faut dire ce qui reste possible, pas seulement ce qui est ferme")
 
+    def test_un_numero_dans_un_prefixe_a_haut_risque_est_nomme(self):
+        """Le cas reel : un pays ouvert, et pourtant l'appel refuse en 21216.
+
+        Twilio ne bloque pas seulement par pays et par categorie, il publie
+        aussi une liste de PREFIXES a haut risque. Le diagnostic annoncait
+        « Cameroun : ouvert, plages signalees comprises » et l'appel echouait
+        sur « Account not allowed to call ». Un instrument qui rassure a tort
+        fait chercher ailleurs, ce qui coute plus cher que de ne rien dire.
+        """
+        tel = self._adaptateur({
+            "/Balance.json": {"balance": "20.00", "currency": "USD"},
+            "IncomingPhoneNumbers": BRANCHE_CLASSE,
+            "HighRiskSpecialPrefixes": {"content": [{"prefix": "+23765"},
+                                                    {"prefix": "+23767"}]},
+            "DialingPermissions/Countries/CM": {
+                "name": "Cameroon", "country_codes": ["237"],
+                "low_risk_numbers_enabled": True,
+                "high_risk_tollfraud_numbers_enabled": True,
+                "high_risk_special_numbers_enabled": False},
+            ".json": self.COMPTE})
+        res = tel.verifier(["CM"], "+237658841523")
+        cm = res["pays"]["CM"]
+        self.assertTrue(cm["ordinaires"])
+        self.assertTrue(cm["plages_signalees"])
+        self.assertTrue(cm["numero_dans_prefixe_special"],
+                        "+23765... doit tomber dans le prefixe +23765")
+        ennui = " ".join(res["ennuis"])
+        self.assertIn("+23765", ennui)
+        self.assertIn("special", ennui.lower())
+
+    def test_un_numero_hors_prefixe_ne_declenche_aucun_ennui(self):
+        """On ne signale pas un blocage qui n'existe pas."""
+        tel = self._adaptateur({
+            "/Balance.json": {"balance": "20.00", "currency": "USD"},
+            "IncomingPhoneNumbers": BRANCHE_CLASSE,
+            "HighRiskSpecialPrefixes": {"content": [{"prefix": "+23767"}]},
+            "DialingPermissions/Countries/CM": {
+                "name": "Cameroon", "country_codes": ["237"],
+                "low_risk_numbers_enabled": True,
+                "high_risk_tollfraud_numbers_enabled": True,
+                "high_risk_special_numbers_enabled": False},
+            ".json": self.COMPTE})
+        res = tel.verifier(["CM"], "+237658841523")
+        self.assertFalse(res["pays"]["CM"]["numero_dans_prefixe_special"])
+        self.assertEqual(res["ennuis"], [])
+
     def test_des_identifiants_refuses_restent_concluants(self):
         """La fiche du compte est la seule lecture dont l'échec tranche."""
         tel = self._adaptateur({".json": (None, "HTTP 401 · 20003 · Authenticate")})

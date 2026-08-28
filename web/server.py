@@ -1040,7 +1040,11 @@ class Handler(BaseHTTPRequestHandler):
             # n'enquete pas, et il ne faut en oublier aucun de ceux ou l'on
             # enquete.
             pays = sorted({q.country for q in APP.questionnaires.values() if q.country})
-            res = APP.tel.verifier(pays)
+            # Le numero que l'on veut REELLEMENT composer. Sans lui, le
+            # diagnostic ne peut repondre que sur le pays, et un pays ouvert
+            # contient des prefixes fermes.
+            corps = self._read_json() or {}
+            res = APP.tel.verifier(pays, str(corps.get("numero") or "").strip())
             APP.store.log("telephony_verification", None, ok=res.get("ok"),
                           etat=res.get("etat"), type=res.get("type"))
             if not res.get("ok"):

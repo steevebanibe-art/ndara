@@ -98,7 +98,8 @@ class TelephonyAdapter(Protocol):
 
     def raccrocher(self, call_sid: str) -> bool: ...
 
-    def verifier(self, pays: list[str] | None = None) -> dict: ...
+    def verifier(self, pays: list[str] | None = None,
+                 numero: str = "") -> dict: ...
 
 
 class NullTelephony:
@@ -113,7 +114,8 @@ class NullTelephony:
     def raccrocher(self, call_sid: str) -> bool:
         return False
 
-    def verifier(self, pays: list[str] | None = None) -> dict:
+    def verifier(self, pays: list[str] | None = None,
+                 numero: str = "") -> dict:
         return {"ok": False, "raison": "aucun fournisseur de téléphonie configuré"}
 
 
@@ -245,7 +247,8 @@ class TwilioTelephony:
         except Exception as exc:
             return None, str(exc)[:200]
 
-    def verifier(self, pays: list[str] | None = None) -> dict:
+    def verifier(self, pays: list[str] | None = None,
+                 numero: str = "") -> dict:
         """Demande à l'opérateur tout ce qu'un appel exige, sans passer d'appel.
 
         Le code 20003 de Twilio recouvre trois causes très différentes :
@@ -410,6 +413,54 @@ class TwilioTelephony:
                     "si elle est ouverte, sinon elle se demande au support et elle engage "
                     "votre responsabilité sur la facture. L'appel ENTRANT, lui, reste "
                     "ouvert sans condition : ce numéro peut recevoir depuis ce pays.")
+
+        # LE NUMERO LUI-MEME, ET PAS SEULEMENT SON PAYS
+        #
+        # Deuxieme fois que ce diagnostic rassure a tort. Il annoncait
+        # « Cameroun : ouvert, plages signalees comprises » et l'appel etait
+        # refuse en 21216, « Account not allowed to call ». La raison : Twilio
+        # ne bloque pas seulement par pays et par categorie, il publie aussi
+        # une liste de PREFIXES a haut risque, prefixe par prefixe, et un
+        # numero peut y figurer dans un pays par ailleurs ouvert.
+        #
+        # Un instrument qui repond « rien ne s'oppose a un appel » puis laisse
+        # l'appel echouer est pire qu'un instrument muet : il fait chercher
+        # ailleurs. On teste donc le numero qu'on veut reellement composer.
+        if numero:
+            for iso, fiche in res["pays"].items():
+                if not fiche.get("lisible"):
+                    continue
+                indicatifs = [str(c) for c in (fiche.get("indicatifs") or [])]
+                if not any(numero.lstrip("+").startswith(c) for c in indicatifs):
+                    continue          # ce numero n'est pas de ce pays la
+                prefixes, refus_p = self._lire(
+                    "https://voice.twilio.com/v1/DialingPermissions/Countries/"
+                    f"{iso}/HighRiskSpecialPrefixes?PageSize=200")
+                if prefixes is None:
+                    fiche["prefixes_lus"] = False
+                    fiche["prefixes_raison"] = refus_p
+                    continue
+                liste = [str(x.get("prefix") or "")
+                         for x in (prefixes.get("content") or [])]
+                fiche["prefixes_lus"] = True
+                fiche["prefixes_nombre"] = len(liste)
+                touche = [x for x in liste if x and numero.startswith(x)]
+                fiche["numero_teste"] = numero
+                fiche["numero_dans_prefixe_special"] = bool(touche)
+                if touche and not fiche.get("services_speciaux"):
+                    res["ennuis"].append(
+                        f"Le numéro {numero} tombe dans le préfixe à haut risque "
+                        f"{touche[0]}, publié par l'opérateur pour "
+                        f"{fiche.get('nom', iso)}. Les appels vers ces préfixes sont "
+                        "refusés tant que la catégorie « High-risk special services "
+                        "numbers » n'est pas cochée, et c'est elle, pas les plages "
+                        "signalées pour fraude, qui bloque ce numéro précis. Console "
+                        "Twilio, Voice, Settings, Geo Permissions, la troisième case. "
+                        "Si elle reste fermée, appelez un autre numéro du même pays "
+                        "qui ne tombe pas dans un préfixe listé.")
+                elif not touche and not fiche.get("services_speciaux"):
+                    fiche["note"] = ("ce numéro n'est dans aucun préfixe spécial listé ; "
+                                     "si l'appel échoue quand même, la cause est ailleurs")
 
         return res
 
