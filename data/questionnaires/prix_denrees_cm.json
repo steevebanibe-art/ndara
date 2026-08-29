@@ -3,7 +3,10 @@
   "version": "1.0",
   "country": "CM",
   "currency": "FCFA",
-  "languages": ["fr", "en"],
+  "languages": [
+    "fr",
+    "en"
+  ],
   "consent_version": "1.0",
   "_note": "Baromètre des prix des denrées de base. Libellés FIXES : ils ne sont jamais reformulés à la volée. Toute modification d'un libellé impose de changer la version du questionnaire et de re-synthétiser l'audio.",
   "incentive": {
@@ -16,15 +19,15 @@
   },
   "prompts": {
     "announce": {
-      "fr": "Bonjour. Je suis un assistant vocal automatique, une intelligence artificielle. Je ne suis pas une personne. J'appelle pour une enquête sur les prix des denrées de base. L'entretien dure environ trois minutes. Vous pouvez raccrocher à tout moment.",
+      "fr": "Bonjour. Je suis une intelligence artificielle, pas une personne. J'appelle pour une enquête sur les prix des denrées de base. Trois minutes, et vous pouvez raccrocher quand vous voulez. Après chaque question, parlez après le signal, ou tapez le chiffre.",
       "en": "Hello. I am an automated voice assistant, an artificial intelligence. I am not a person. I am calling for a survey on the price of basic food items. The interview takes about three minutes. You may hang up at any time."
     },
     "consent_survey": {
-      "fr": "Acceptez-vous de répondre à quelques questions sur les prix et sur votre ménage ? Vos réponses resteront anonymes. Dites oui ou non, ou tapez 1 pour oui, 2 pour non.",
+      "fr": "Acceptez-vous de répondre à quelques questions sur les prix et sur votre ménage ? Vos réponses restent anonymes. Oui ou non.",
       "en": "Do you agree to answer a few questions about prices and your household? Your answers will remain anonymous. Say yes or no, or press 1 for yes, 2 for no."
     },
     "consent_corpus": {
-      "fr": "Deuxième question, différente de la première. Acceptez-vous que l'enregistrement de votre voix soit conservé pour aider à améliorer les technologies vocales dans nos langues ? C'est facultatif. Si vous refusez, vous participez quand même à l'enquête et vous recevez le même crédit téléphonique. Dites oui ou non, ou tapez 1 pour oui, 2 pour non.",
+      "fr": "Deuxième question, différente de la première. Acceptez-vous qu'on garde l'enregistrement de votre voix, pour améliorer les technologies vocales dans nos langues ? C'est facultatif : refuser ne change ni l'entretien, ni votre crédit téléphonique. Oui ou non.",
       "en": "A second, separate question. Do you agree that the recording of your voice be kept to help improve voice technology in our languages? This is optional. If you refuse, you still take part in the survey and you still receive the same airtime. Say yes or no, or press 1 for yes, 2 for no."
     },
     "consent_corpus_ack": {
@@ -51,8 +54,14 @@
       "fr": "Votre code de retrait est {code}. Envoyez ce code par SMS au 8080 à tout moment pour faire effacer votre enregistrement.",
       "en": "Your withdrawal code is {code}. Send this code by SMS to 8080 at any time to have your recording deleted."
     },
-    "yes_label": {"fr": "Oui", "en": "Yes"},
-    "no_label": {"fr": "Non", "en": "No"}
+    "yes_label": {
+      "fr": "Oui",
+      "en": "Yes"
+    },
+    "no_label": {
+      "fr": "Non",
+      "en": "No"
+    }
   },
   "steps": [
     {
@@ -66,16 +75,141 @@
         "en": "Which region do you live in? Adamawa, press 1. Centre, 2. East, 3. Far North, 4. Littoral, 5. North, 6. North-West, 7. West, 8. South, 9. South-West, 0."
       },
       "options": [
-        {"code": "ADAMAOUA", "dtmf": "1", "labels": {"fr": ["adamaoua"], "en": ["adamawa"]}},
-        {"code": "CENTRE", "dtmf": "2", "labels": {"fr": ["centre", "yaounde"], "en": ["centre", "center"]}},
-        {"code": "EST", "dtmf": "3", "labels": {"fr": ["est", "bertoua"], "en": ["east"]}},
-        {"code": "EXTREME_NORD", "dtmf": "4", "labels": {"fr": ["extreme nord", "extreme-nord", "maroua"], "en": ["far north"]}},
-        {"code": "LITTORAL", "dtmf": "5", "labels": {"fr": ["littoral", "douala"], "en": ["littoral"]}},
-        {"code": "NORD", "dtmf": "6", "labels": {"fr": ["nord", "garoua"], "en": ["north"]}},
-        {"code": "NORD_OUEST", "dtmf": "7", "labels": {"fr": ["nord ouest", "nord-ouest", "bamenda"], "en": ["north west", "north-west"]}},
-        {"code": "OUEST", "dtmf": "8", "labels": {"fr": ["ouest", "bafoussam"], "en": ["west"]}},
-        {"code": "SUD", "dtmf": "9", "labels": {"fr": ["sud", "ebolowa"], "en": ["south"]}},
-        {"code": "SUD_OUEST", "dtmf": "0", "labels": {"fr": ["sud ouest", "sud-ouest", "buea"], "en": ["south west", "south-west"]}}
+        {
+          "code": "ADAMAOUA",
+          "dtmf": "1",
+          "labels": {
+            "fr": [
+              "adamaoua"
+            ],
+            "en": [
+              "adamawa"
+            ]
+          }
+        },
+        {
+          "code": "CENTRE",
+          "dtmf": "2",
+          "labels": {
+            "fr": [
+              "centre",
+              "yaounde"
+            ],
+            "en": [
+              "centre",
+              "center"
+            ]
+          }
+        },
+        {
+          "code": "EST",
+          "dtmf": "3",
+          "labels": {
+            "fr": [
+              "est",
+              "bertoua"
+            ],
+            "en": [
+              "east"
+            ]
+          }
+        },
+        {
+          "code": "EXTREME_NORD",
+          "dtmf": "4",
+          "labels": {
+            "fr": [
+              "extreme nord",
+              "extreme-nord",
+              "maroua"
+            ],
+            "en": [
+              "far north"
+            ]
+          }
+        },
+        {
+          "code": "LITTORAL",
+          "dtmf": "5",
+          "labels": {
+            "fr": [
+              "littoral",
+              "douala"
+            ],
+            "en": [
+              "littoral"
+            ]
+          }
+        },
+        {
+          "code": "NORD",
+          "dtmf": "6",
+          "labels": {
+            "fr": [
+              "nord",
+              "garoua"
+            ],
+            "en": [
+              "north"
+            ]
+          }
+        },
+        {
+          "code": "NORD_OUEST",
+          "dtmf": "7",
+          "labels": {
+            "fr": [
+              "nord ouest",
+              "nord-ouest",
+              "bamenda"
+            ],
+            "en": [
+              "north west",
+              "north-west"
+            ]
+          }
+        },
+        {
+          "code": "OUEST",
+          "dtmf": "8",
+          "labels": {
+            "fr": [
+              "ouest",
+              "bafoussam"
+            ],
+            "en": [
+              "west"
+            ]
+          }
+        },
+        {
+          "code": "SUD",
+          "dtmf": "9",
+          "labels": {
+            "fr": [
+              "sud",
+              "ebolowa"
+            ],
+            "en": [
+              "south"
+            ]
+          }
+        },
+        {
+          "code": "SUD_OUEST",
+          "dtmf": "0",
+          "labels": {
+            "fr": [
+              "sud ouest",
+              "sud-ouest",
+              "buea"
+            ],
+            "en": [
+              "south west",
+              "south-west"
+            ]
+          }
+        }
       ]
     },
     {
@@ -89,8 +223,36 @@
         "en": "Are you a woman or a man? Woman, press 1. Man, press 2."
       },
       "options": [
-        {"code": "F", "dtmf": "1", "labels": {"fr": ["femme", "une femme", "feminin"], "en": ["woman", "female"]}},
-        {"code": "M", "dtmf": "2", "labels": {"fr": ["homme", "un homme", "masculin"], "en": ["man", "male"]}}
+        {
+          "code": "F",
+          "dtmf": "1",
+          "labels": {
+            "fr": [
+              "femme",
+              "une femme",
+              "feminin"
+            ],
+            "en": [
+              "woman",
+              "female"
+            ]
+          }
+        },
+        {
+          "code": "M",
+          "dtmf": "2",
+          "labels": {
+            "fr": [
+              "homme",
+              "un homme",
+              "masculin"
+            ],
+            "en": [
+              "man",
+              "male"
+            ]
+          }
+        }
       ]
     },
     {
@@ -103,11 +265,70 @@
         "en": "How old are you? 18 to 24, press 1. 25 to 34, 2. 35 to 49, 3. 50 to 64, 4. 65 or older, 5."
       },
       "options": [
-        {"code": "18_24", "dtmf": "1", "labels": {"fr": ["18 24", "dix huit"], "en": ["18 24"]}},
-        {"code": "25_34", "dtmf": "2", "labels": {"fr": ["25 34"], "en": ["25 34"]}},
-        {"code": "35_49", "dtmf": "3", "labels": {"fr": ["35 49"], "en": ["35 49"]}},
-        {"code": "50_64", "dtmf": "4", "labels": {"fr": ["50 64"], "en": ["50 64"]}},
-        {"code": "65_PLUS", "dtmf": "5", "labels": {"fr": ["65", "soixante cinq", "plus de 65"], "en": ["65", "older"]}}
+        {
+          "code": "18_24",
+          "dtmf": "1",
+          "labels": {
+            "fr": [
+              "18 24",
+              "dix huit"
+            ],
+            "en": [
+              "18 24"
+            ]
+          }
+        },
+        {
+          "code": "25_34",
+          "dtmf": "2",
+          "labels": {
+            "fr": [
+              "25 34"
+            ],
+            "en": [
+              "25 34"
+            ]
+          }
+        },
+        {
+          "code": "35_49",
+          "dtmf": "3",
+          "labels": {
+            "fr": [
+              "35 49"
+            ],
+            "en": [
+              "35 49"
+            ]
+          }
+        },
+        {
+          "code": "50_64",
+          "dtmf": "4",
+          "labels": {
+            "fr": [
+              "50 64"
+            ],
+            "en": [
+              "50 64"
+            ]
+          }
+        },
+        {
+          "code": "65_PLUS",
+          "dtmf": "5",
+          "labels": {
+            "fr": [
+              "65",
+              "soixante cinq",
+              "plus de 65"
+            ],
+            "en": [
+              "65",
+              "older"
+            ]
+          }
+        }
       ]
     },
     {
@@ -116,7 +337,10 @@
       "unit": "personnes",
       "min": 1,
       "max": 30,
-      "plausible": [1, 15],
+      "plausible": [
+        1,
+        15
+      ],
       "expected_seconds": 8,
       "text": {
         "fr": "Combien de personnes vivent habituellement dans votre ménage ? Dites le nombre.",
@@ -138,9 +362,15 @@
       "unit": "FCFA/kg",
       "min": 100,
       "max": 10000,
-      "plausible": [300, 2000],
+      "plausible": [
+        300,
+        2000
+      ],
       "expected_seconds": 10,
-      "ask_if": {"step": "bought_rice", "equals": "yes"},
+      "ask_if": {
+        "step": "bought_rice",
+        "equals": "yes"
+      },
       "indicator": "rice_price",
       "text": {
         "fr": "Quel prix avez-vous payé pour un kilogramme de riz, en francs CFA ? Dites le montant.",
@@ -153,7 +383,10 @@
       "unit": "FCFA/litre",
       "min": 200,
       "max": 20000,
-      "plausible": [700, 3000],
+      "plausible": [
+        700,
+        3000
+      ],
       "expected_seconds": 10,
       "indicator": "oil_price",
       "text": {
@@ -170,9 +403,59 @@
         "en": "Compared with last month, have food prices gone up, stayed the same, or gone down? Gone up, press 1. The same, 2. Gone down, 3."
       },
       "options": [
-        {"code": "hausse", "dtmf": "1", "labels": {"fr": ["augmente", "augmentation", "monte", "cher", "hausse"], "en": ["up", "increased", "higher"]}},
-        {"code": "stable", "dtmf": "2", "labels": {"fr": ["pareil", "pareils", "meme", "stable", "rien change"], "en": ["same", "stable", "unchanged"]}},
-        {"code": "baisse", "dtmf": "3", "labels": {"fr": ["baisse", "diminue", "moins cher", "descendu"], "en": ["down", "decreased", "lower"]}}
+        {
+          "code": "hausse",
+          "dtmf": "1",
+          "labels": {
+            "fr": [
+              "augmente",
+              "augmentation",
+              "monte",
+              "cher",
+              "hausse"
+            ],
+            "en": [
+              "up",
+              "increased",
+              "higher"
+            ]
+          }
+        },
+        {
+          "code": "stable",
+          "dtmf": "2",
+          "labels": {
+            "fr": [
+              "pareil",
+              "pareils",
+              "meme",
+              "stable",
+              "rien change"
+            ],
+            "en": [
+              "same",
+              "stable",
+              "unchanged"
+            ]
+          }
+        },
+        {
+          "code": "baisse",
+          "dtmf": "3",
+          "labels": {
+            "fr": [
+              "baisse",
+              "diminue",
+              "moins cher",
+              "descendu"
+            ],
+            "en": [
+              "down",
+              "decreased",
+              "lower"
+            ]
+          }
+        }
       ]
     },
     {
@@ -203,21 +486,39 @@
       "id": "chk_filtre_riz",
       "type": "implies",
       "_note": "Contrôle d'intégrité de l'instrument : si aucun riz n'a été acheté, le prix doit avoir été sauté par le filtre.",
-      "if": {"step": "bought_rice", "equals": "no"},
-      "then": {"step": "rice_price", "equals": "__skipped__"}
+      "if": {
+        "step": "bought_rice",
+        "equals": "no"
+      },
+      "then": {
+        "step": "rice_price",
+        "equals": "__skipped__"
+      }
     },
     {
       "id": "chk_severite_alimentaire",
       "type": "implies",
       "_note": "Ordre de sévérité (échelle FIES) : une journée entière sans manger implique une réduction des repas.",
-      "if": {"step": "skipped_day", "equals": "yes"},
-      "then": {"step": "reduced_meals", "equals": "yes"}
+      "if": {
+        "step": "skipped_day",
+        "equals": "yes"
+      },
+      "then": {
+        "step": "reduced_meals",
+        "equals": "yes"
+      }
     },
     {
       "id": "chk_taille_menage",
       "type": "implies",
-      "if": {"step": "bought_rice", "equals": "yes"},
-      "then": {"step": "hh_size", "max": 30}
+      "if": {
+        "step": "bought_rice",
+        "equals": "yes"
+      },
+      "then": {
+        "step": "hh_size",
+        "max": 30
+      }
     }
   ]
 }
