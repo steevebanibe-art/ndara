@@ -937,6 +937,13 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/stream":
             return self._stream()
 
+        if route == "/api/telephonie/journal":
+            # La boite noire de la ligne. Un appel qui echoue laisse une trace
+            # ici, et c'est la seule facon de savoir laquelle des trois causes
+            # s'est produite : refus de l'operateur, signature rejetee, ou tour
+            # recu par le moteur.
+            return self._json({"journal": APP.store.journal_telephonie(60)})
+
         if route == "/api/capabilities":
             return self._json(APP.capabilities())
 

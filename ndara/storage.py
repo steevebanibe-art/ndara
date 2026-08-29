@@ -329,6 +329,30 @@ class Store:
         return None
 
     @_serialise
+    def journal_telephonie(self, limite: int = 60) -> list[dict[str, Any]]:
+        """La boite noire de la ligne telephonique.
+
+        Un appel qui echoue laisse trois traces possibles : l'operateur a
+        refuse de composer, la signature a ete rejetee, ou le moteur a bien
+        recu un tour. Sans moyen de les relire, on ne peut que deviner laquelle
+        s'est produite, et le tableau de bord finit par affirmer le contraire
+        de ce qui vient d'arriver.
+
+        Rien de ce qui revient ici n'est personnel : des identifiants d'appel,
+        des etapes, des messages d'erreur de l'operateur.
+        """
+        lignes = []
+        for at, kind, brut in self.conn.execute(
+                "SELECT at, kind, payload FROM events WHERE kind LIKE 'telephony_%' "
+                "ORDER BY at DESC LIMIT ?", (max(1, min(200, limite)),)):
+            try:
+                charge = json.loads(brut)
+            except Exception:
+                charge = {}
+            lignes.append({"quand": at, "quoi": kind, "detail": charge})
+        return lignes
+
+    @_serialise
     def close(self) -> None:
         self.conn.close()
 
