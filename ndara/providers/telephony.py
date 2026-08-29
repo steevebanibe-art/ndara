@@ -521,6 +521,58 @@ class TwilioTelephony:
 # longues. Ne pas revenir à un modèle non téléphonique sans avoir mesuré.
 _MODELE_VOIX = "phone_call"
 
+# Le signal de tour de parole, et pourquoi il ressemble à ça.
+#
+# `<Gather>` n'a pas de bip intégré : `playBeep` n'existe que sur `<Record>`.
+# Le signal doit donc être un fichier, et il est produit par
+# `scripts/build_audio.py` (générateur `_ecrire_bip`), pas par un synthétiseur
+# vocal : une tonalité n'a pas de langue, et un seul fichier sert les deux
+# pays.
+#
+# CAHIER DES CHARGES DU SON, ET IL N'EST PAS ARBITRAIRE. Une tonalité UNIQUE,
+# médium-grave, autour de 800 Hz, brève. Surtout pas une triple tonalité
+# montante : en Afrique centrale et de l'Ouest, c'est le signal d'échec réseau
+# des opérateurs, et un répondant l'entendrait comme « l'appel a coupé ».
+#
+# Le blanc qui précède est DANS le fichier, pas dans un `<Pause>`. `<Pause>`
+# compte en secondes entières, et il faut ici 350 ms : le silence de rupture
+# est ce qui rend le bip audible comme un événement plutôt que comme la fin de
+# la phrase précédente. Un silence nu de plus d'une seconde et demie, lui, est
+# le pire des signaux : sur une ligne 2G il ne se distingue pas d'une coupure,
+# et le réflexe du répondant est de dire « allô ? », ce qui consomme son tour.
+#
+# Format : WAV 8 kHz mono. La documentation de `<Play>` le demande
+# explicitement pour un fichier imbriqué dans un `<Gather>` — « Twilio does not
+# recommend using an .mp3 file for a nested <Play>. Use a .wav file instead, as
+# transcoding .mp3 files can add delay. » Le délai de transcodage tomberait
+# exactement là où l'appel doit être le plus vif.
+SON_BIP = "/audio/_sons/bip.wav"
+
+# Le signal de tour de parole. Une tonalité, pas une voix : voir
+# `scripts/build_bip.py` pour le cahier des charges et la régénération.
+#
+# Il est le même pour toutes les langues et tous les questionnaires, et c'est
+# le point : un son qui change de sens d'une invite à l'autre n'enseigne rien.
+# Servi par la route `/audio/` existante, aucun changement de serveur.
+_BIP = "/audio/_commun/bip.wav"
+
+# Combien de silence après la parole avant de clore la transcription.
+#
+# Valait `auto` jusqu'ici, et c'est la combinaison que la référence de Twilio
+# interdit explicitement, dans les considérations de `speechModel` : « This
+# attribute requires you to set speechTimeout to a positive integer value.
+# Don't use auto. » Nous envoyions les deux ensemble. C'est un candidat sérieux
+# et bon marché au symptôme « il y a des choses où je dois insister pour qu'il
+# écoute » : un réglage refusé par la plateforme ne se plaint pas, il dégrade.
+#
+# Ce compteur ne démarre pas à l'ouverture de l'écoute mais à la PREMIÈRE PAUSE
+# dans la parole. Tant que personne n'a parlé, c'est `timeout` qui gouverne.
+# Deux valeurs suffisent : « oui », « non » ou un chiffre se terminent net ; un
+# montant dit à voix haute porte souvent une pause interne (« mille… cinq
+# cents ») qu'il ne faut pas prendre pour une fin de réponse.
+_SILENCE_COURT = "2"
+_SILENCE_LONG = "3"
+
 
 def _indices(prompt: dict, langue: str = "fr") -> str:
     """Ce que la reconnaissance doit s'attendre à entendre.
@@ -614,19 +666,50 @@ def prompt_to_twiml(prompt: dict, *, action_url: str, audio_base: str | None = N
     inscrit au journal que le segment consenti n'a pas été collecté. Un
     consentement non utilisé se dit ; il ne se convertit pas en silence.
 
-    ON PEUT COUPER UNE QUESTION, JAMAIS UN CONSENTEMENT
-    ---------------------------------------------------
+    ON PEUT COUPER UNE QUESTION AU CLAVIER, JAMAIS UN CONSENTEMENT
+    ---------------------------------------------------------------
     Un enquêteur humain n'oblige personne à écouter la fin d'une question déjà
     comprise : on répond, et l'entretien avance. C'est ce que permet
-    l'imbrication de la lecture *dans* l'écoute. Sans elle, l'écoute ne
-    commence qu'une fois la phrase finie, la première syllabe du répondant se
-    perd, et chaque tour porte un blanc qui s'entend comme une machine.
+    l'imbrication de la lecture *dans* l'écoute — MAIS AU CLAVIER SEULEMENT, et
+    il faut le dire net, parce que la version précédente de ce texte promettait
+    davantage. Twilio documente qu'une TOUCHE arrête la lecture imbriquée
+    (« <Gather> verb stops speaking. It waits for the caller's action. ») et
+    documente aussi que rien ne commence avant la fin des verbes imbriqués
+    (« Before Twilio begins the timeout period, it waits until all nested verbs
+    have executed. »). La parole prononcée pendant la lecture n'est nulle part
+    dite captée. L'imbrication n'achète donc pas l'interruption à la voix.
 
-    Sur l'annonce d'intelligence artificielle et sur les deux consentements,
-    c'est l'inverse, et ce n'est pas négociable : la phrase doit avoir été
-    entendue en entier avant qu'un « oui » puisse compter. Un consentement
-    arraché à la moitié d'une phrase n'est pas un consentement. La lecture
-    reste donc hors de l'écoute, et personne ne peut la couper.
+    Conséquence, mesurée sur le premier appel réel : « il faut absolument
+    attendre jusqu'à la fin pour qu'il écoute » est vrai PARTOUT, questions
+    comprises. Ce n'était pas un défaut des consentements, c'était un défaut de
+    tout l'appel, et il n'y avait rien pour le dire au répondant.
+
+    Sur l'annonce d'intelligence artificielle et sur les deux consentements, la
+    règle reste et n'est pas négociable : la phrase doit avoir été entendue en
+    entier avant qu'un « oui » puisse compter. Un consentement arraché à la
+    moitié d'une phrase n'est pas un consentement. La lecture reste donc hors
+    de l'écoute, et personne ne peut la couper, pas même au clavier.
+
+    LE SIGNAL DE TOUR DE PAROLE
+    ---------------------------
+    Puisque le répondant doit attendre, il faut lui dire quand. Toute invite
+    qui attend une réponse se termine donc par la même tonalité brève, posée
+    juste avant que l'écoute s'ouvre, et à cet endroit-là seulement.
+
+    Elle est placée de façon à ne rien changer aux deux règles ci-dessus. Sur
+    une question, elle est le DERNIER verbe imbriqué : Twilio n'ouvre le
+    décompte qu'après l'avoir jouée, donc le bip tombe exactement à l'instant
+    où l'écoute commence. Sur un consentement, elle est jouée AVANT le
+    `<Gather>` auto-fermé, comme la phrase elle-même : le consentement ne
+    devient ni interruptible ni précipité, on ne peut toujours pas répondre
+    avant de l'avoir entendu en entier.
+
+    Ce que ce signal ne fait PAS, et qu'il ne faut pas lui demander : enseigner.
+    Le bip n'est pas une convention universelle — sur un parc mobile prépayé,
+    la messagerie vocale est restée marginale, et « biper » quelqu'un veut dire
+    tout autre chose. Il marque le moment ; c'est le libellé qui dit le geste.
+    Les libellés le disent déjà : « Dites oui ou non, ou tapez 1 pour oui, 2
+    pour non. » Il ne manquait que le moment.
 
     CE QUI EST DIT AVANT LA QUESTION
     --------------------------------
@@ -647,6 +730,17 @@ def prompt_to_twiml(prompt: dict, *, action_url: str, audio_base: str | None = N
         if audio_base and audio_url:
             return [f"<Play>{escape(audio_base.rstrip('/') + audio_url)}</Play>"]
         return [dire(texte)] if texte else []
+
+    def signal() -> list[str]:
+        """La tonalité qui dit « c'est à vous », et rien d'autre.
+
+        Elle a besoin d'une adresse absolue, comme tout `<Play>`. Sans adresse
+        publique configurée, il n'y a de toute façon pas d'appel : on ne
+        fabrique pas un `<Play>` relatif que Twilio refuserait.
+        """
+        if not audio_base:
+            return []
+        return [f"<Play>{escape(audio_base.rstrip('/') + _BIP)}</Play>"]
 
     # La relance d'abord, la question ensuite.
     enonce: list[str] = []
@@ -671,33 +765,51 @@ def prompt_to_twiml(prompt: dict, *, action_url: str, audio_base: str | None = N
         return "\n".join(lines)
 
     coupable = prompt.get("kind") == "question"
+    bip = signal()
 
     def poser(gather_ouvrant: str) -> None:
-        """Écoute avec ou sans interruption possible, selon la nature de l'invite."""
+        """Écoute avec ou sans interruption possible, selon la nature de l'invite.
+
+        Dans les deux cas le bip est la dernière chose entendue avant l'écoute.
+        Imbriqué, il retarde l'ouverture du décompte jusqu'à sa propre fin ;
+        Twilio récupère d'ailleurs tous les fichiers imbriqués avant de
+        commencer à jouer le premier, donc l'ajouter ne creuse aucun blanc de
+        téléchargement au milieu de la phrase.
+        """
         if coupable:
             lines.append(gather_ouvrant + ">")
-            lines.extend("  " + l for l in enonce)
+            lines.extend("  " + l for l in enonce + bip)
             lines.append("</Gather>")
         else:
             lines.extend(enonce)
+            lines.extend(bip)
             lines.append(gather_ouvrant + "/>")
 
     # Les indices valent pour toute écoute, pas seulement pour celles à
     # modalités. Ils étaient posés sur la seule branche « dtmf speech », donc
     # une question ouverte et une question numérique n'en recevaient aucun.
     indices = _indices(prompt, langue)
+    silence = (_SILENCE_LONG if prompt.get("input_type") in ("number", "open")
+               else _SILENCE_COURT)
     commun = (f'action="{escape(action_url)}" method="POST" language="{locale}" '
-              f'speechTimeout="auto" speechModel="{_MODELE_VOIX}" '
+              f'speechTimeout="{silence}" speechModel="{_MODELE_VOIX}" '
               f'profanityFilter="false" actionOnEmptyResult="true"'
               + (f' hints="{escape(indices)}"' if indices else ""))
 
     if prompt.get("allow_dtmf") and prompt.get("options"):
         poser(f'<Gather input="dtmf speech" numDigits="1" timeout="7" {commun}')
     elif corpus_consenti and transcription and prompt.get("corpus_eligible", True):
+        # Le seul endroit de l'appel qui portait déjà un bip — celui de Twilio,
+        # différent du nôtre. Deux sons pour un même sens, dans un même appel,
+        # n'enseignent aucune règle. On joue le nôtre et on éteint l'autre ;
+        # faute d'adresse publique pour le servir, on garde celui de Twilio
+        # plutôt que d'ouvrir un enregistrement sans prévenir personne.
         lines.extend(enonce)
+        lines.extend(bip)
         lines.append(
             f'<Record action="{escape(action_url)}" method="POST" '
-            f'maxLength="{record_seconds}" timeout="3" playBeep="true" '
+            f'maxLength="{record_seconds}" timeout="3" '
+            f'playBeep="{"false" if bip else "true"}" '
             f'trim="trim-silence" transcribe="false"/>'
         )
     elif prompt.get("input_type") == "number":

@@ -3,6 +3,14 @@
 Séquence imposée, dans cet ordre, sans exception :
 
     1. ANNONCE      — « je suis une intelligence artificielle »  (jamais facultatif)
+    1bis. CALIBRAGE — au téléphone seulement, et seulement si le questionnaire
+                      l'a fait traduire et synthétiser. Un tour d'essai à
+                      valeur statistique NULLE : « si vous m'entendez, appuyez
+                      sur une touche, ou dites oui après le signal ». Rien
+                      n'est collecté, aucun tour n'est écrit ; on apprend
+                      seulement au répondant le geste qu'on lui demandera
+                      vingt fois, et on mesure laquelle de ses deux voies
+                      fonctionne AVANT de lui demander un consentement.
     2. CONSENTEMENT 1 — participer à l'enquête
     3. CONSENTEMENT 2 — verser l'enregistrement au corpus public
                         → REFUSABLE SANS CONSÉQUENCE : la personne participe
@@ -68,6 +76,31 @@ class Prompt:
     moment précis où le répondant hésite déjà. Les relances font partie des
     libellés pré-synthétisés, il suffisait de dire lequel."""
 
+    invite_text: str = ""
+    invite_audio_url: str | None = None
+    """Le passage de tour : ce qu'on demande, et par quel geste.
+
+    Dernier segment dit avant l'écoute, toujours le même, toujours à la même
+    place : « Appuyez sur le chiffre de votre réponse, ou dites-la après le
+    signal. » Le canal téléphonique y ajoute le signal lui-même.
+
+    C'est la pièce qui manquait, et son absence n'était pas un défaut de
+    confort. Rien, ni à l'écran ni dans l'oreille, ne disait au répondant que
+    c'était son tour : il répondait pendant la phrase, n'était pas entendu,
+    recevait une relance, et raccrochait. Ce qui se perdait là n'était pas de
+    l'agrément, c'était le taux de réponse, donc la valeur statistique de tout
+    ce que NDARA produit.
+
+    Une enquête ougandaise sur les abandons en serveur vocal (Oxford Open
+    Digital Health, 2025) chiffre la cause : 25,4 % des abandons déclarent
+    n'avoir pas compris la consigne, contre moins de 1 % pour la qualité
+    sonore. Le problème est une question de CONSIGNE avant d'être une question
+    de signal — d'où le fait que ce champ porte une phrase, et pas seulement
+    un bip.
+
+    Facultatif : un questionnaire qui ne l'a pas fait traduire et synthétiser
+    n'en reçoit aucun, et l'appel se déroule comme avant."""
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "kind": self.kind, "step_id": self.step_id, "text": self.text,
@@ -77,6 +110,8 @@ class Prompt:
             "progress": round(self.progress, 3), "done": self.done,
             "interview_id": self.interview_id, "note": self.note,
             "note_audio_url": self.note_audio_url,
+            "invite_text": self.invite_text,
+            "invite_audio_url": self.invite_audio_url,
         }
 
 
@@ -137,9 +172,138 @@ class InterviewEngine:
             progress=0.0,
         )
 
+    # ------------------------------------------------------------------
+    # Le passage de tour
+    # ------------------------------------------------------------------
+
+    def _poser_invite(self, p: Prompt, iv: Interview) -> Prompt:
+        """Colle à l'invite le geste attendu, dans la voix de studio.
+
+        Trois formulations seulement, réutilisées partout : aucun coût de
+        synthèse par question, et surtout une convention STABLE. Un répondant
+        n'apprend pas une règle qui change de forme à chaque tour.
+
+        LE CLAVIER EST NOMMÉ EN PREMIER, ET CE N'EST PAS UN DÉTAIL DE STYLE.
+        Patel et al. (Stanford, CHI 2009-2010, Avaaj Otalo, 51 agriculteurs
+        suivis sept mois) : le clavier a été préféré à la voix chaque semaine
+        du pilote, et le taux d'achèvement de tâche y est significativement
+        supérieur. Au Cameroun s'y ajoute un atout déjà payé par quelqu'un
+        d'autre : *126# et les menus USSD des opérateurs ont entraîné la
+        population entière, y compris analphabète, à la séquence « écouter une
+        liste, appuyer sur un chiffre ». C'est le seul modèle mental
+        d'interface que toute la cible partage. La voix reste offerte partout
+        — elle est indispensable aux questions ouvertes et au corpus — mais
+        elle cesse d'être la voie annoncée en tête.
+        """
+        if p.input_type == "number":
+            cle = "invite_nombre"
+        elif p.allow_dtmf and p.options:
+            cle = "invite_touches"
+        elif p.allow_voice:
+            cle = "invite_parole"
+        else:
+            return p
+        texte = self.q.prompt_optionnel(cle, iv.language)
+        if texte is None:
+            return p
+        p.invite_text = texte
+        p.invite_audio_url = self._audio(cle, iv.language)
+        return p
+
+    # ------------------------------------------------------------------
+    # Tour de calibrage
+    # ------------------------------------------------------------------
+
+    def _calibrage_disponible(self, iv: Interview) -> bool:
+        return self.q.prompt_optionnel("calibrage", iv.language) is not None
+
+    def _calibrage_requis(self, iv: Interview) -> bool:
+        """Un tour d'essai, au téléphone seulement, et une seule fois.
+
+        Sur le web il n'a aucun sens : l'écran montre les boutons, le geste est
+        visible. Au téléphone rien n'est visible, et c'est le seul dispositif
+        dont l'efficacité est documentée à grande échelle — Viamo a constaté,
+        en pré-testant son service 3-2-1 pays par pays, un manque de
+        familiarité avec le clavier dans un menu vocal, et a fait du module qui
+        l'enseigne une brique standard de ses déploiements.
+        """
+        return (iv.channel == Channel.PHONE.value
+                and self._announced(iv)
+                and not iv.meta.get("calibrage")
+                and self._calibrage_disponible(iv))
+
+    def _calibrage_prompt(self, iv: Interview, note: str = "") -> Prompt:
+        """Le seul tour de l'appel dont la réponse n'est pas une donnée.
+
+        Il ne demande rien de personnel, il ne précède aucun engagement, et
+        rien de ce qui y est dit n'entre dans un `Turn` ni dans le
+        dénominateur du taux de réponse. Il précède le consentement, et c'est
+        volontaire : quelqu'un qui ne sait pas encore comment on répond ne peut
+        pas consentir valablement. Il ne déplace pas l'annonce d'intelligence
+        artificielle, qui reste la toute première phrase de l'appel.
+        """
+        p = Prompt(
+            kind="calibrage",
+            step_id="__calibrage__",
+            text=self.q.prompt("calibrage", iv.language),
+            audio_url=self._audio("calibrage", iv.language),
+            input_type="consent",
+            allow_voice=True,
+            allow_dtmf=True,
+            options=[
+                {"code": "yes", "dtmf": "1",
+                 "label": self.q.prompt("yes_label", iv.language)},
+                {"code": "no", "dtmf": "2",
+                 "label": self.q.prompt("no_label", iv.language)},
+            ],
+            interview_id=iv.id,
+            progress=0.02,
+        )
+        if note:
+            p.note = self.q.prompt(note, iv.language)
+            p.note_audio_url = self._audio(note, iv.language)
+        return self._poser_invite(p, iv)
+
+    def _lire_calibrage(self, iv: Interview, *, text: str | None,
+                        dtmf: str | None) -> Prompt:
+        """Ce qui est mesuré ici n'est pas une compréhension, c'est un passage.
+
+        On ne cherche pas à savoir si le répondant a dit « oui ». On cherche à
+        savoir si sa voix arrive transcrite et si ses touches arrivent, avant
+        de bâtir tout un entretien sur une voie qui ne passe pas. N'importe
+        quelle touche compte, n'importe quel mot compte. Rien n'est deviné :
+        on note ce qui est arrivé, y compris quand rien n'arrive.
+        """
+        essais = int(iv.meta.get("calibrage_essais") or 0) + 1
+        iv.meta["calibrage_essais"] = essais
+        if dtmf:
+            modalite = "dtmf"
+        elif (text or "").strip():
+            modalite = "voix"
+        else:
+            modalite = "aucune"
+
+        if modalite == "aucune" and essais < 2:
+            # Une seule insistance, et elle ne redemande pas la même chose :
+            # elle réduit la demande au geste le plus sûr.
+            self.store.save_interview(iv)
+            self.store.log("calibrage_sans_reponse", iv.id, essai=essais)
+            return self._calibrage_prompt(iv, note="calibrage_clavier")
+
+        iv.meta["calibrage"] = modalite
+        self.store.save_interview(iv)
+        self.store.log("calibrage", iv.id, modalite=modalite, essais=essais)
+
+        p = self._consent_prompt(iv, "survey")
+        cle = "calibrage_ok" if modalite != "aucune" else "calibrage_repli"
+        if self.q.prompt_optionnel(cle, iv.language) is not None:
+            p.note = self.q.prompt(cle, iv.language)
+            p.note_audio_url = self._audio(cle, iv.language)
+        return p
+
     def _consent_prompt(self, iv: Interview, which: str) -> Prompt:
         key = "consent_survey" if which == "survey" else "consent_corpus"
-        return Prompt(
+        return self._poser_invite(Prompt(
             kind="consent",
             step_id=f"__consent_{which}__",
             text=self.q.prompt(key, iv.language),
@@ -155,7 +319,7 @@ class InterviewEngine:
             ],
             interview_id=iv.id,
             progress=0.05 if which == "survey" else 0.08,
-        )
+        ), iv)
 
     # ------------------------------------------------------------------
     # Soumission d'une réponse
@@ -175,7 +339,19 @@ class InterviewEngine:
         if iv.consent_survey == Consent.PENDING.value and iv.cursor == 0 and not self._announced(iv):
             iv.meta["announced_at"] = utcnow()
             self.store.save_interview(iv)
+            if self._calibrage_requis(iv):
+                return self._calibrage_prompt(iv)
             return self._consent_prompt(iv, "survey")
+
+        # -- 1bis. Tour de calibrage : on apprend le geste avant de demander --
+        #
+        # Placé ici, et pas ailleurs : après l'annonce, qui reste la première
+        # phrase de l'appel, et avant le consentement, parce qu'un accord
+        # donné par quelqu'un qui ne sait pas encore comment on répond n'a pas
+        # la valeur qu'on lui prête. Aucun `Turn` n'est écrit : ce tour ne
+        # produit pas d'observation et ne doit peser sur aucun dénominateur.
+        if self._calibrage_requis(iv):
+            return self._lire_calibrage(iv, text=text, dtmf=dtmf)
 
         # -- 2. Consentement à l'enquête --
         if iv.consent_survey == Consent.PENDING.value:
@@ -263,6 +439,9 @@ class InterviewEngine:
             AnswerMethod.VOICE.value if (audio_bytes or asr_confidence is not None)
             else AnswerMethod.TEXT.value)
 
+        # Rien n'est arrivé du tout : ni texte, ni touche, ni son.
+        rien_recu = not (text or "").strip() and not dtmf and not audio_bytes
+
         # Repli clavier : la modalité est certaine, on ne passe pas par le codeur.
         if dtmf:
             opt = step.option_by_dtmf(dtmf)
@@ -282,15 +461,41 @@ class InterviewEngine:
                         raw_text=redact_text(text or ""), code=CODE_UNCLEAR,
                         confidence=res.confidence, asr_confidence=asr_confidence,
                         method=method, relances=relances + 1,
-                        flags=res.flags + ["relance"])
+                        flags=res.flags + ["relance", *(["silence"] if rien_recu else [])])
             self.store.save_turn(turn)
             last = (relances + 1) >= step.max_relances
-            p = self._prompt_for_step(iv, step)
-            cle = "relance_dtmf" if last else "relance_unclear"
+
+            # « Rien n'est arrivé » et « je n'ai pas compris » ne sont pas la
+            # même panne, et les confondre fait mentir la machine.
+            #
+            # Twilio ne dit jamais qu'il n'a pas reconnu. Mais il dit autre
+            # chose, qui suffit : avec `actionOnEmptyResult`, un tour où
+            # personne n'a été entendu revient SANS `SpeechResult` et sans
+            # `Digits`, là où une parole mal transcrite revient avec un texte.
+            # La distinction est donc lisible sans rien inventer.
+            #
+            # Elle compte parce que les deux cas appellent des mots opposés.
+            # Dire « je n'ai pas bien compris » à quelqu'un qui a parlé
+            # PENDANT la question — le cas le plus fréquent, et le point de
+            # départ de tout ce chantier — est faux : il n'y avait rien à
+            # comprendre. Ce qu'il faut lui dire, c'est quand parler.
+            if last:
+                cle = "relance_dtmf"
+            elif rien_recu and self.q.prompt_optionnel("relance_silence", iv.language):
+                cle = "relance_silence"
+            else:
+                cle = "relance_unclear"
+
+            # Une relance ne reprend pas tout depuis le début. Le répondant a
+            # entendu le préambule ; il lui manque les modalités. La forme
+            # brève sert aux relances intermédiaires ; la DERNIÈRE rejoue la
+            # question entière, parce que c'est elle qui énumère les touches
+            # et que c'est vers le clavier qu'on bascule.
+            p = self._prompt_for_step(iv, step, court=not last)
             p.note = self.q.prompt(cle, iv.language)
             p.note_audio_url = self._audio(cle, iv.language)
             p.allow_dtmf = last or p.allow_dtmf
-            return p
+            return self._poser_invite(p, iv)
 
         audio_path = None
         if audio_bytes and iv.consent_corpus == Consent.GRANTED.value and step.corpus_eligible:
@@ -369,13 +574,19 @@ class InterviewEngine:
             return self._finish(iv)
         return self._prompt_for_step(iv, step)
 
-    def _prompt_for_step(self, iv: Interview, step: Step) -> Prompt:
+    def _prompt_for_step(self, iv: Interview, step: Step, court: bool = False) -> Prompt:
         total = max(1, len(self.q.steps))
-        return Prompt(
+        texte, suffixe = step.prompt(iv.language), ""
+        if court:
+            bref = step.prompt_court(iv.language)
+            if bref:
+                texte, suffixe = bref, "_court"
+        return self._poser_invite(Prompt(
             kind="question",
             step_id=step.id,
-            text=step.prompt(iv.language),
-            audio_url=f"/audio/{self.q.audio_dir_id()}/{iv.language}/{step.id}.mp3",
+            text=texte,
+            audio_url=(f"/audio/{self.q.audio_dir_id()}/{iv.language}/"
+                       f"{step.id}{suffixe}.mp3"),
             options=[{"code": o.code, "dtmf": o.dtmf, "label": o.label_for(iv.language)}
                      for o in step.options],
             allow_voice=True,
@@ -384,7 +595,7 @@ class InterviewEngine:
             unit=step.unit,
             progress=0.1 + 0.9 * (self._index_of(step) / total),
             interview_id=iv.id,
-        )
+        ), iv)
 
     # ------------------------------------------------------------------
     # Clôture

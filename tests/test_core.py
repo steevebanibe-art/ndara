@@ -1238,6 +1238,222 @@ class TestComprehensionAuTelephone(unittest.TestCase):
         self.assertNotIn("asr_confidence_mean", a.details)
 
 
+# --------------------------------------------------------------------------
+# Le tour de parole
+#
+# Écrit le 29 août 2026, après le deuxième appel réel. L'agent avait compris et
+# codé correctement, et l'appel était pourtant invivable : « il faut absolument
+# attendre jusqu'à la fin pour qu'il écoute », « il y a des choses où je dois
+# insister pour qu'il écoute ».
+#
+# La cause n'était pas dans le code mais dans ce que le code ne disait pas.
+# Twilio n'ouvre le décompte qu'après exécution des verbes imbriqués : le
+# répondant DOIT attendre la fin de la phrase, sur toutes les invites. Rien à
+# l'écran, rien dans l'oreille ne le lui disait. Un répondant réel ne le
+# devinera pas : il parlera pendant le texte, ne sera pas entendu, subira une
+# relance qui reprend tout, et raccrochera. C'est le taux de réponse, donc
+# toute la crédibilité statistique du produit, qui se joue sur ce signal.
+# --------------------------------------------------------------------------
+
+class TestTourDeParole(unittest.TestCase):
+
+    BASE = "https://ndara.test"
+
+    def _twiml(self, prompt, **kw):
+        from ndara.providers.telephony import prompt_to_twiml
+        base = {"kind": "question", "step_id": "s", "text": "T",
+                "audio_url": "/audio/q/fr/s.mp3", "allow_voice": True,
+                "options": [], "done": False}
+        base.update(prompt)
+        base.setdefault("allow_dtmf", bool(base.get("options")))
+        kw.setdefault("audio_base", self.BASE)
+        return prompt_to_twiml(base, action_url="https://x/step", **kw)
+
+    OUI_NON = [{"code": "yes", "dtmf": "1", "label": "Oui"},
+               {"code": "no", "dtmf": "2", "label": "Non"}]
+
+    def test_toute_invite_qui_attend_une_reponse_porte_le_signal(self):
+        """Un signal posé à un seul endroit n'enseigne aucune règle.
+
+        Le bip existait déjà dans le code, mais sur la seule branche `Record`,
+        que la quasi-totalité des appels ne traverse jamais. Le répondant
+        l'entendait une fois et ne pouvait rien en déduire.
+        """
+        invites = [
+            {"kind": "consent", "input_type": "consent", "options": self.OUI_NON},
+            {"kind": "question", "input_type": "choice", "options": self.OUI_NON},
+            {"kind": "question", "input_type": "number", "unit": "FCFA"},
+            {"kind": "question", "input_type": "open"},
+        ]
+        for invite in invites:
+            with self.subTest(invite=invite.get("input_type")):
+                self.assertIn("bip.wav", self._twiml(invite))
+
+    def test_sur_une_question_le_signal_est_le_dernier_verbe_imbrique(self):
+        """C'est ce qui le fait tomber pile à l'ouverture de l'écoute.
+
+        Twilio : « Before Twilio begins the timeout period, it waits until all
+        nested verbs have executed. » Le bip imbriqué en dernier retarde donc
+        le décompte jusqu'à sa propre fin. Placé ailleurs, il annoncerait un
+        tour de parole qui n'est pas encore ouvert.
+        """
+        xml = self._twiml({"kind": "question", "input_type": "choice",
+                           "options": self.OUI_NON})
+        self.assertIn("</Gather>", xml)
+        self.assertLess(xml.index("<Gather"), xml.index("/s.mp3"))
+        self.assertLess(xml.index("/s.mp3"), xml.index("bip.wav"))
+        self.assertLess(xml.index("bip.wav"), xml.index("</Gather>"))
+
+    def test_sur_un_consentement_le_signal_reste_hors_de_l_ecoute(self):
+        """On ne consent pas à ce qu'on n'a pas fini d'entendre.
+
+        Le bip ne doit pas devenir la porte dérobée par laquelle un « oui »
+        arraché à la moitié d'une phrase entrerait quand même : il est joué
+        après l'énoncé et avant que le `Gather` s'ouvre, comme l'énoncé
+        lui-même. Le consentement reste non interruptible, y compris au
+        clavier.
+        """
+        xml = self._twiml({"kind": "consent", "input_type": "consent",
+                           "options": self.OUI_NON})
+        self.assertNotIn("</Gather>", xml)
+        self.assertLess(xml.index("/s.mp3"), xml.index("bip.wav"))
+        self.assertLess(xml.index("bip.wav"), xml.index("<Gather"))
+
+    def test_une_annonce_qui_n_attend_rien_ne_porte_aucun_signal(self):
+        """Annoncer un tour de parole qui n'existe pas ferait parler dans le
+        vide, puis attendre une réponse que personne n'écoute."""
+        xml = self._twiml({"kind": "announce", "input_type": "none",
+                           "allow_voice": False, "allow_dtmf": False})
+        self.assertNotIn("bip.wav", xml)
+        self.assertNotIn("<Gather", xml)
+
+    def test_le_signal_est_un_son_et_jamais_une_voix(self):
+        """Une invite parlée par la synthèse du canal, au milieu d'une voix de
+        studio, s'entend : la machine se dénonce au moment précis où le
+        répondant hésite. Et un son n'a pas de langue à traduire."""
+        for langue in ("fr", "en", "km"):
+            with self.subTest(langue=langue):
+                xml = self._twiml({"kind": "question", "input_type": "choice",
+                                   "options": self.OUI_NON}, langue=langue)
+                self.assertNotIn("<Say", xml)
+                # Le même fichier partout : c'est ce qui en fait une convention.
+                self.assertIn(f"{self.BASE}/audio/_commun/bip.wav", xml)
+
+    def test_le_meme_signal_avant_un_enregistrement_et_pas_celui_de_twilio(self):
+        """Deux sons pour un même sens dans un même appel n'enseignent rien."""
+        xml = self._twiml({"kind": "question", "input_type": "open"},
+                          corpus_consenti=True, transcription=True)
+        self.assertIn("<Record", xml)
+        self.assertIn('playBeep="false"', xml)
+        self.assertLess(xml.index("bip.wav"), xml.index("<Record"))
+
+    def test_sans_adresse_publique_le_bip_de_twilio_reste_en_secours(self):
+        """Faute de pouvoir servir le nôtre, mieux vaut le sien que rien :
+        ouvrir un enregistrement sans prévenir personne est pire."""
+        xml = self._twiml({"kind": "question", "input_type": "open"},
+                          audio_base=None, corpus_consenti=True, transcription=True)
+        self.assertIn('playBeep="true"', xml)
+
+    def test_le_silence_de_fin_de_parole_n_est_jamais_auto(self):
+        """La référence de Twilio l'interdit avec un `speechModel`, mot pour
+        mot : « This attribute requires you to set speechTimeout to a positive
+        integer value. Don't use auto. » Nous envoyions les deux ensemble.
+
+        Un réglage refusé par la plateforme ne se plaint pas, il dégrade — et
+        c'est un candidat sérieux à « je dois insister pour qu'il écoute ».
+        """
+        import re
+        for invite in ({"input_type": "choice", "options": self.OUI_NON},
+                       {"input_type": "number", "unit": "FCFA"},
+                       {"input_type": "open"}):
+            with self.subTest(invite=invite.get("input_type")):
+                xml = self._twiml(invite)
+                if "speechModel" not in xml:
+                    continue
+                valeurs = re.findall(r'speechTimeout="([^"]*)"', xml)
+                self.assertTrue(valeurs)
+                for v in valeurs:
+                    self.assertTrue(v.isdigit() and int(v) > 0,
+                                    f"speechTimeout={v!r} avec un speechModel")
+
+    def test_un_montant_dit_a_voix_haute_a_droit_a_une_pause_interne(self):
+        """« mille… cinq cents » ne doit pas être clos après « mille »."""
+        import re
+        court = re.search(r'speechTimeout="(\d+)"',
+                          self._twiml({"input_type": "choice",
+                                       "options": self.OUI_NON})).group(1)
+        long = re.search(r'speechTimeout="(\d+)"',
+                         self._twiml({"input_type": "number",
+                                      "unit": "FCFA"})).group(1)
+        self.assertGreater(int(long), int(court))
+
+
+class TestFichierDuSignal(unittest.TestCase):
+    """Le son lui-même. Régénérable par `python scripts/build_bip.py`."""
+
+    CHEMIN = ROOT / "data" / "audio" / "_commun" / "bip.wav"
+
+    def _lire(self):
+        import struct
+        import wave
+        with wave.open(str(self.CHEMIN), "rb") as f:
+            params = f.getparams()
+            brut = f.readframes(f.getnframes())
+        return params, list(struct.unpack(f"<{len(brut) // 2}h", brut))
+
+    def test_le_fichier_existe(self):
+        self.assertTrue(self.CHEMIN.is_file(),
+                        "sans ce fichier, chaque invite ouvre l'écoute en silence")
+
+    def test_il_est_au_format_de_la_ligne_et_non_en_mp3(self):
+        """Twilio, sur un `Play` imbriqué : « Use a .wav file instead, as
+        transcoding .mp3 files can add delay. » Ce délai tomberait exactement
+        là où l'appel s'entend comme une machine."""
+        params, _ = self._lire()
+        self.assertEqual(self.CHEMIN.suffix, ".wav")
+        self.assertEqual(params.nchannels, 1)
+        self.assertEqual(params.sampwidth, 2)
+        self.assertEqual(params.framerate, 8000)
+
+    def test_il_commence_par_un_silence_qui_le_detache_de_la_phrase(self):
+        """Sans ce blanc, le bip s'entend comme la dernière syllabe de la
+        question au lieu d'un événement séparé. Il est gravé dans le fichier :
+        `Pause` ne compte qu'en secondes entières, et une seconde par question
+        se facture."""
+        params, ech = self._lire()
+        silence = next((i for i, v in enumerate(ech) if abs(v) > 100), len(ech))
+        self.assertGreaterEqual(silence / params.framerate, 0.25)
+
+    def test_il_est_court_car_il_se_paie_a_chaque_question(self):
+        params, ech = self._lire()
+        self.assertLess(len(ech) / params.framerate, 1.0)
+
+    def test_une_seule_tonalite_jamais_trois(self):
+        """En Afrique centrale et de l'Ouest, la triple tonalité montante est
+        le signal d'échec réseau des opérateurs : elle serait comprise comme
+        « l'appel a coupé », exactement l'inverse de « c'est à vous »."""
+        params, ech = self._lire()
+        seuil = 100
+        creux = int(0.05 * params.framerate)   # 50 ms de blanc = deux sons
+        blocs, dans, vide = 0, False, 0
+        for v in ech:
+            if abs(v) > seuil:
+                if not dans:
+                    blocs += 1
+                dans, vide = True, 0
+            elif dans:
+                vide += 1
+                if vide >= creux:
+                    dans = False
+        self.assertEqual(blocs, 1, "le signal doit être une tonalité unique")
+
+    def test_il_tient_dans_la_bande_que_la_ligne_transporte(self):
+        """Hors de 300–3400 Hz, un codec 2G le jette purement et simplement."""
+        from scripts.build_bip import FREQUENCE
+        self.assertGreater(FREQUENCE, 300)
+        self.assertLess(FREQUENCE, 3400)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 

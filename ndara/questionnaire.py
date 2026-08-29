@@ -58,6 +58,20 @@ class Step:
     id: str
     type: str
     text: dict[str, str]
+    text_court: dict[str, str] | None = None
+    """La même question, réduite à ce qu'il faut pour y répondre.
+
+    Une relance qui reprend tout depuis le début est la façon la plus sûre de
+    faire raccrocher quelqu'un qui vient déjà de parler pour rien. Elle n'a
+    pourtant aucune raison d'être longue : le répondant a entendu le préambule,
+    il lui manque seulement les modalités.
+
+    Ce libellé est FACULTATIF, et c'est délibéré. Tant qu'un questionnaire ne
+    le déclare pas, la relance rejoue la question entière, exactement comme
+    avant : aucun questionnaire existant ne devient muet, aucun fichier audio
+    n'est exigé rétroactivement. Quand il est déclaré, la pré-synthèse produit
+    `{id}_court.mp3` d'elle-même.
+    """
     options: list[Option] = field(default_factory=list)
     unit: str | None = None
     min: float | None = None
@@ -73,6 +87,16 @@ class Step:
 
     def prompt(self, lang: str) -> str:
         return self.text.get(lang) or self.text.get("fr") or next(iter(self.text.values()))
+
+    def prompt_court(self, lang: str) -> str | None:
+        """La forme brève, si et seulement si elle existe DANS CETTE LANGUE.
+
+        Pas de repli sur le français : faire entendre une relance française à
+        un répondant khmer serait pire que de rejouer la question entière.
+        """
+        if not self.text_court:
+            return None
+        return self.text_court.get(lang) or None
 
     def option_by_code(self, code: str) -> Option | None:
         for o in self.options:
@@ -114,6 +138,27 @@ class Questionnaire:
     def prompt(self, key: str, lang: str) -> str:
         block = self.prompts.get(key, {})
         return block.get(lang) or block.get("fr") or next(iter(block.values()), f"[{key}]")
+
+    def prompt_optionnel(self, key: str, lang: str) -> str | None:
+        """Un libellé système FACULTATIF, ou rien du tout.
+
+        `prompt()` ne rend jamais rien : à défaut il rend `[clé]`, et à défaut
+        de la langue demandée il rend le français. C'est le bon comportement
+        pour les libellés obligatoires, et le pire possible pour ceux qui ne le
+        sont pas : un questionnaire qui n'a pas encore été retraduit ferait
+        prononcer « crochet invite touches crochet » à la voix de studio, ou
+        une phrase française à un répondant khmer.
+
+        Les conduites du tour de parole (les invites « appuyez sur… ou parlez
+        après le signal », le tour de calibrage) sont exactement de ce genre :
+        elles améliorent l'appel là où elles ont été traduites et synthétisées,
+        et elles se taisent partout ailleurs. Le khmer de `prix_denrees_kh`
+        attend une relecture par un locuteur natif du CADT : tant qu'elle n'a
+        pas eu lieu, ces libellés n'existent pas en khmer, et NDARA ne les
+        invente pas.
+        """
+        texte = (self.prompts.get(key) or {}).get(lang)
+        return texte.strip() if texte and texte.strip() else None
 
     def step(self, step_id: str) -> Step | None:
         for s in self.steps:
@@ -166,6 +211,7 @@ class Questionnaire:
                     id=sd["id"],
                     type=stype,
                     text=sd["text"],
+                    text_court=sd.get("text_court"),
                     options=options,
                     unit=sd.get("unit"),
                     min=sd.get("min"),
