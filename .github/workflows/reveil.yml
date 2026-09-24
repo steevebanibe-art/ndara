@@ -1,11 +1,19 @@
-# Reveil du service.
+# Reveil du service, et surveillance.
 #
-# Ne fait rien tant que la variable DEMO_URL n'existe pas dans le depot.
-# Pour l'activer : Settings > Secrets and variables > Actions > Variables >
-# New repository variable, nom DEMO_URL, valeur l'adresse de la demonstration.
+# L'hebergeur endort un service gratuit apres 48 heures sans visite. Un service
+# endormi met plus d'une minute a repondre, et l'operateur telephonique, lui,
+# abandonne son appel au bout d'une quinzaine de secondes : un jury qui compose
+# le numero entend alors une erreur au lieu de l'entretien. Ce workflow passe
+# donc regulierement, ce qui remet le compteur a zero.
 #
-# Utile seulement sur un hebergeur qui endort les services inactifs. Sur un
-# hebergement qui ne dort pas, laissez la variable vide et rien ne tourne.
+# Piege paye une fois, le 24 septembre 2026 : la garde `vars.DEMO_URL != ''`
+# court-circuitait l'etape a chaque execution parce que la variable n'avait
+# jamais ete creee. Le workflow etait vert, il ne faisait rien, et le service a
+# dormi sans que personne le sache. Une garde silencieuse sur une variable
+# absente ressemble a un succes.
+#
+# Variable requise : Settings > Secrets and variables > Actions > Variables,
+# nom DEMO_URL, valeur l'adresse de la demonstration, sans barre finale.
 
 name: reveil
 on:
@@ -17,9 +25,23 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Reveiller la demonstration
-        if: vars.DEMO_URL != ''
+      - name: L'adresse doit etre configuree
         run: |
-          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 90 "${{ vars.DEMO_URL }}/health" || echo 000)
-          echo "reponse de ${{ vars.DEMO_URL }}/health : $code"
-          if [ "$code" != "200" ]; then echo "::warning::la demonstration n'a pas repondu 200"; fi
+          if [ -z "${{ vars.DEMO_URL }}" ]; then
+            echo "::error::DEMO_URL n'est pas definie : le reveil ne surveille rien."
+            exit 1
+          fi
+
+      - name: Reveiller la demonstration
+        run: |
+          adresse="${{ vars.DEMO_URL }}/health"
+          # Trois essais avant de crier. Un service qui se reveille peut mettre
+          # une minute, et une alerte par intermittence finit par etre ignoree.
+          for essai in 1 2 3; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 90 "$adresse" || echo 000)
+            echo "essai $essai : $adresse repond $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 20
+          done
+          echo "::error::la demonstration n'a pas repondu 200 en trois essais."
+          exit 1
